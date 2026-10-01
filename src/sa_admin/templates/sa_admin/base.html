@@ -1,0 +1,97 @@
+{% load static %}
+{% load as_json from shareabouts_utils %}
+
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>{% block title %}Shareabouts Admin{% endblock %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    {% block styles %}
+    <link href="https://api.tiles.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.css" rel='stylesheet' />
+    <link rel="stylesheet" href="{% static 'libs/leaflet/leaflet.css' %}" />
+    <link rel="stylesheet" href="{% static 'sa_admin/css/style.css' %}">
+    {% endblock %}
+  </head>
+
+  <body class="{% block body_classes %}{% endblock %}">
+    <header>
+      <h1>{% block heading %}Shareabouts Admin{% endblock %}</h1>
+      {% comment %} <nav>
+        <ul>
+          <li><a href="{% url 'sa_admin:admin' %}">Admin</a></li>
+          <li><a href="{% url 'sa_admin:admin-places' %}">Places</a></li>
+          <li><a href="{% url 'sa_admin:admin-datasets' %}">Datasets</a></li>
+          <li><a href="{% url 'sa_admin:admin-users' %}">Users</a></li>
+          <li><a href="{% url 'sa_admin:admin-logout' %}">Logout</a></li>
+        </ul>
+      </nav> {% endcomment %}
+      <p>You are logged in as {{ api.current_user.name }} ({{ api.current_user.username }}).</p>
+      <form method="POST" action="{% url 'login' %}">
+        {% csrf_token %}
+        <input type="hidden" name="shadowmethod" value="DELETE">
+        <input type="hidden" name="next" value="{% url 'admin_home' %}">
+        <button type="submit">Logout</button>
+      </form>
+    </header>
+
+    <main>
+      {% block content %}{% endblock %}
+    </main>
+
+    {% block scripts %}
+    {% comment %} mapbox-gl stays on Mapbox; everything else is ours now.
+       Order matters: leaflet-mapbox-gl reads window.L and window.mapboxgl at
+       execution and keeps whatever it finds, so it must come after both. If
+       mapboxgl were missing it would still define L.mapboxGL and only fail
+       later, inside the map, where the error is easy to miss. {% endcomment %}
+    <script src="{% static 'libs/jquery-1.10.2.min.js' %}"></script>
+    <script src="https://api.tiles.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.js"></script>
+    <script src="{% static 'libs/leaflet/leaflet.js' %}"></script>
+    {% comment %} Leaflet finds its default marker images by reading its own CSS
+       back out of the DOM and stripping "marker-icon.png" off the end. Django's
+       ManifestStaticFilesStorage renames that file with a content hash, the
+       strip silently fails to match, and Leaflet builds a nonsense URL. Setting
+       imagePath here skips the detection entirely - _getIconUrl only calls
+       _detectIconPath when imagePath is unset. STATIC_URL, not {% templatetag openblock %} static {% templatetag closeblock %}, because
+       this is a directory: collectstatic writes the unhashed copies too, and
+       these three PNGs are used on one admin page. {% endcomment %}
+    <script>L.Icon.Default.imagePath = '{{ STATIC_URL }}libs/leaflet/images/';</script>
+    <script src="{% static 'libs/mapbox-gl-leaflet/leaflet-mapbox-gl.js' %}"></script>
+
+    {% if settings.DEBUG %}
+    <script src="{% static 'libs/underscore.js' %}"></script>
+    <script src="{% static 'libs/backbone.js' %}"></script>
+    <script src="{% static 'libs/backbone.marionette.js' %}"></script>
+    <script src="{% static 'libs/handlebars-v3.0.3.js' %}"></script>
+    <script src="{% static 'libs/moment.min.js' %}"></script>
+    <script src="{% static 'libs/json2.js' %}"></script>
+    <script src="{% static 'libs/leaflet.argo.js' %}"></script>
+    <script src="{% static 'libs/binaryajax.js' %}"></script>
+    <script src="{% static 'libs/exif.js' %}"></script>
+    <script src="{% static 'libs/load-image.js' %}"></script>
+    <script src="{% static 'libs/canvas-to-blob.js' %}"></script>
+    <script src="{% static 'libs/spin.min.js' %}"></script>
+    <script src="{% static 'libs/gatekeeper.js' %}"></script>
+    <script src="{% static 'libs/swag.min.js' %}"></script>
+    <script src="{% static 'libs/jquery.scrollTo.js' %}"></script>
+    {% else %}
+    <script src="{% static 'dist/libs.min.js' %}?_={{settings.LAST_DEPLOY_DATE}}"></script>
+    {% endif %}
+
+    <script src="{% static 'js/models.js' %}"></script>
+
+    <script>
+      var Shareabouts = Shareabouts || {};
+      Shareabouts.Config = {{ config.data | as_json | safe }};
+      Shareabouts.bootstrapped = {
+        currentUser: {{ api.current_user | as_json | safe }},
+        dataset: {{ api.dataset_root | as_json | safe }},
+        staticUrl: {{ STATIC_URL | as_json | safe }},
+        mapboxToken: {{ settings.MAPBOX_TOKEN | as_json | safe }},
+      };
+    </script>
+    {% endblock %}
+</html>

@@ -1,0 +1,97 @@
+        <p class="posting-as">{{#_}}Posting as{{/_}} <strong>{{ current_user "username" }}</strong> <span class="posting-as-note">{{#_}}— filled automatically{{/_}}</span></p>
+
+        {{!-- GPS leads: on a phone almost nobody wants to drag a map to
+              their own doorstep. Dragging stays as the quiet fallback for
+              when the GPS is refused or the room is somewhere else. --}}
+        <p class="use-location-primary-wrap">
+          <button type="button" class="btn use-location-btn use-location-primary">{{#_}}Use my current location{{/_}}</button>
+        </p>
+        <p class="drag-marker-instructions">{{#_}}or drag the map to the room{{/_}}</p>
+        <p class="drag-marker-warning is-visuallyhidden">{{#_}}It looks like you didn't set your location yet. Please drag the map to your location.{{/_}}</p>
+
+        <div class="form-step form-step-where">
+          <span class="step-dot">1</span>
+          <span class="form-step-title">{{#_}}Where{{/_}}</span>
+          <span class="form-step-note"></span>
+        </div>
+        <p class="use-location-status is-hidden" aria-live="polite"></p>
+
+        <form id="place-form" class="place-form clearfix" onsubmit="return false;">
+          <input type="hidden" name="visible" value="on">
+          <input type="hidden" name="user_token" value="{{{ user_token }}}">
+
+          <div class="form-step">
+            <span class="step-dot">2</span>
+            <span class="form-step-title">{{#_}}The room{{/_}}</span>
+          </div>
+
+          {{!-- This question sits ABOVE the field set on purpose. It used to
+                be the last thing on the form, below the photo upload, so a
+                one-handed poster had to scroll past a file picker to reach
+                it. It is also the question most likely to be answered
+                wrongly, so it gets asked while they are still paying
+                attention. --}}
+          <div class="free-picker">
+            <p class="free-picker-label">{{#_}}When will the room be free?{{/_}}</p>
+            <p class="free-picker-help">{{#_}}Don't know yet? That is fine. Leave it as it is.{{/_}}</p>
+
+            {{!-- "Not sure yet" ships pre-selected here AND as the value of
+                  the free_state input below, so the two agree with no
+                  JavaScript running on render. Nothing has to fire for the
+                  form to be correct. --}}
+            <div class="free-picker-kind" role="group" aria-label="When will the room be free?">
+              <button type="button" class="btn free-kind" data-kind="now">{{#_}}Free now{{/_}}</button>
+              <button type="button" class="btn free-kind is-active" data-kind="ask">{{#_}}Not sure yet{{/_}}</button>
+              <button type="button" class="btn free-kind" data-kind="date">{{#_}}Pick a month{{/_}}</button>
+            </div>
+
+            <div class="free-picker-months is-hidden">
+              <p class="free-picker-months-label">{{#_}}Which month?{{/_}}</p>
+              {{!-- Chips are written in by custom.js from the Bikram Sambat
+                    table; month lengths vary by year and cannot be derived. --}}
+              <div class="free-month-chips"></div>
+            </div>
+
+            <p class="free-picker-date is-hidden" aria-live="polite"></p>
+            <p class="free-picker-preview" aria-live="polite">{{#_}}Students will see:{{/_}} <span class="free-badge free-badge-ask">{{#_}}Someone lives here now — call and ask{{/_}}</span></p>
+            <p class="free-picker-note">{{#_}}Students will call and ask. Your room still shows on the map.{{/_}}</p>
+
+            {{!-- Offered ONLY once a month is chosen, and cleared the moment
+                  they leave month mode. With "Not sure yet" there is no date
+                  for the room to come back on, so a ticked box there would
+                  hide it forever with nothing to release it - and the poster
+                  would decide the site had eaten their room and post it
+                  again. custom.js (KK.freeDate.hideDecision) is what enforces
+                  that; this markup only draws it.
+
+                  The reason line matters more than the label. A student
+                  skimming a form on a phone does not stop to work out whether
+                  this applies to them - "tick this if you still live here"
+                  tells them. --}}
+            <label class="free-hide-until is-hidden">
+              <input type="checkbox" class="free-hide-check">
+              <span class="free-hide-label">{{#_}}Show my room on the map only after it is free{{/_}}</span>
+              <small class="free-hide-why" aria-live="polite"></small>
+            </label>
+
+            <input type="hidden" name="free_state" value="ask">
+            <input type="hidden" name="free_from" value="">
+            <input type="hidden" name="free_ts" value="">
+            {{!-- Empty unless the box is both offered and ticked. The API
+                  turns a non-empty value here into visible=false; see
+                  Place.apply_hide_until_free. --}}
+            <input type="hidden" name="hide_until_free" value="">
+          </div>
+
+          {{> form-field-set form_config=place_config }}
+
+          <p class="terms-consent" style="font-size: 12px; color: #666; margin: 8px 0;">
+            {{#_}}By adding a place you agree to the{{/_}}
+            <a href="/page/terms" rel="internal">{{#_}}Terms of Use{{/_}}</a>.
+          </p>
+
+          <input name="save-place-btn" id="save-place-btn" type="submit" value="{{ place_config.submit_button_label }}" class="btn btn-primary submit-btn">
+
+          <div class="form-spinner"></div>
+
+        </form>

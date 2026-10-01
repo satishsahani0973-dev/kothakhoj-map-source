@@ -1,0 +1,33 @@
+{
+  "name": "shareabouts-django-client",
+  "version": "3.19.1",
+  "description": "Standalone Shareabouts client and server package",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/openplans/shareabouts.git"
+  },
+  "keywords": [
+    "maps",
+    "crowdsourcing",
+    "engagement"
+  ],
+  "author": "OpenPlans",
+  "license": "GPL",
+  "bugs": {
+    "url": "https://github.com/openplans/shareabouts/issues"
+  },
+  "homepage": "https://github.com/openplans/shareabouts",
+  "scripts": {
+    "postinstall": "npx grunt"
+  },
+  "devDependencies": {
+    "grunt": "^1.6.1",
+    "grunt-cli": "^1.4.3",
+    "grunt-contrib-concat": "^2.1.0",
+    "grunt-contrib-copy": "^1.0.0",
+    "grunt-contrib-uglify": "^5.2.2",
+    "grunt-contrib-watch": "^1.1.0",
+    "uglify-js": "~3.17.0"
+  }
+}

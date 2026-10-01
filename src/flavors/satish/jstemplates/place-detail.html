@@ -1,0 +1,177 @@
+        {{#if is_new }}
+          {{> place-form-submission-confirmation }}
+        {{/if}}
+
+        {{#can_moderate_places}}
+          {{> place-moderation-bar }}
+        {{/can_moderate_places}}
+
+        {{> place-detail-promotion-bar }}
+
+        <header class="place-header clearfix">
+          <h1>{{#if name }}{{ name }}{{^}}{{>location-string .}}{{/if}}</h1>
+          {{!-- Lane and house number are printed here as ONE line under the
+                landmark, not as two labelled rows further down. An address is
+                a single thing to a reader; splitting it into "Path: ..." and
+                "House No.: ..." would make somebody assemble it themselves.
+                Both parts are optional, so the helper prints nothing at all
+                when there is nothing to say - which is also why no empty-row
+                CSS is needed. --}}
+          {{ address_line path house_number }}
+          {{!-- The posted-on stamp sits beside the availability badge, not
+                buried in the submitter sentence below. Every date on this
+                page is a prediction; this one is a fact, and near AMDA
+                where rooms go in days it is what actually decides whether
+                the walk is worth it. --}}
+          {{!-- Only ever rendered for the poster, because nobody else is
+                served a hidden room in the first place. It sits above the
+                availability badge on purpose: "this is not on the map" is
+                more important than when it frees. --}}
+          {{ hidden_notice visible hide_until_free free_ts }}
+          {{!-- Rent sits directly under the room's name and above everything
+                else, because it is the question a student asks first and the
+                one this site promised in six places while collecting it
+                nowhere. Prints nothing at all for rooms posted before the
+                field existed - see KK.rent. --}}
+          {{ rent_line rent }}
+          <p class="place-availability">{{ free_badge free_ts free_state }} <span class="place-type-chip">{{ place_type_label location_type }}</span> <span class="place-posted">{{#_}}Posted{{/_}} {{ fromnow created_datetime }}</span></p>
+          <a href="#" class="btn btn-small share-place"
+             data-place-id="{{ id }}"
+             data-place-name="{{#if name }}{{ name }}{{^}}Room for rent{{/if}}">{{#_}}Share{{/_}}</a>
+          <span class="place-submission-details">
+            {{#_}}<strong class="point-submitter">
+              {{#if submitter.avatar_url }}
+                <img src="{{ submitter.avatar_url }}" class="avatar" />
+              {{^}}
+                <img src="{{ STATIC_URL }}css/images/user-50.png" class="avatar" />
+              {{/if}}
+              {{#if submitter.username }}
+                {{ submitter.username }}
+              {{^}}
+                {{#if submitter_name }}
+                  {{ submitter_name }}
+                {{^}}
+                  {{ anonymous_name }}
+                {{/if}}
+              {{/if}}
+            </strong> {{ action_text }} this {{ place_type_label location_type}}
+
+            {{#if region}}
+              in {{ region }}
+            {{/if}}{{/_}}
+
+            {{!-- The posted-on time moved up next to the availability badge.
+                  Keeping it here too would print "3 days ago" twice on the
+                  same screen. --}}
+
+            <span class="survey-count">{{ survey_count }} {{ survey_label_by_count }}</span>
+
+            {{^if survey_config}}
+            <a href="/place/{{ id }}" class="view-on-map-btn btn btn-small">{{#_}}View On Map{{/_}}</a>
+            {{/if}}
+
+          </span>
+        </header>
+
+        <section class="place-items">
+          {{!-- Photos are a horizontal strip, one to a screen, not a
+                vertical stack. A stack pushed the phone number, the rent and
+                the Directions button below three or four full-width photos,
+                so the things a student came for were off the bottom of a
+                phone and the page felt like a photo album with contact
+                details buried in it.
+
+                scroll-snap does the whole job in CSS: no library, no JS
+                needed to swipe, and it keeps working if the enhancement
+                below never runs. The strip is focusable and arrow-key
+                scrollable, which is what keyboard and screen-reader users
+                get instead of a swipe.
+
+                The next photo PEEKS in from the right by design - that sliver
+                is a stronger "there is more" signal than any arrow icon,
+                because it shows what you would get rather than telling you.
+                The counter and dots are added by custom.js and only when
+                there is more than one photo. --}}
+          {{#if attachments.length}}
+          <div class="kk-photos" data-photo-count="{{ attachments.length }}">
+            <div class="kk-photos-strip" tabindex="0" role="group" aria-label="{{#_}}Room photos{{/_}}">
+              {{# attachments }}
+              <figure class="kk-photo">
+                {{!-- width/height are not decoration. The api records the real
+                      stored size of every attachment, and handing those to the
+                      browser lets it reserve the right box before the photo
+                      arrives, so nothing jumps when it lands. The thumbnail
+                      has the same shape, so they hold for it too.
+
+                      In the room list (in_list, set by PlaceListItemView) the
+                      photo sits in a ~144px slot, so it loads the 480px
+                      thumbnail. The room page keeps the full file. Photos
+                      without a thumbnail - older ones, small ones - fall back
+                      to the full file, so nothing is ever blank. --}}
+                <img src="{{#if ../in_list}}{{#if thumbnail}}{{ thumbnail }}{{else}}{{ file }}{{/if}}{{else}}{{ file }}{{/if}}" alt="{{#_}}Photo of this room{{/_}}"
+                     {{#if width}}width="{{ width }}" height="{{ height }}"{{/if}}
+                     loading="lazy" decoding="async">
+              </figure>
+              {{/ attachments }}
+            </div>
+          </div>
+          {{/if}}
+          {{!-- These names are EXCLUSIONS, not inclusions: each_place_item walks
+                every field in config and renders the ones NOT named here, so a
+                new config field prints itself as a generic label/value row
+                unless it is added to this list. rent is named because it is
+                drawn properly above, beside the availability badge. --}}
+          {{#each_place_item "submitter_name" "name" "path" "house_number" "location_type" "stay_duration" "contact_number" "contact_role" "rent"}}
+          <div class="place-item place-item-{{ name }}">
+            <span class="place-label place-label-{{ name }}">{{ label }}</span>
+            <p class="place-value place-value-{{ name }}">{{nlToBr value }}</p>
+          </div>
+          {{/each_place_item }}
+          {{ contact_block contact_number contact_role }}
+
+          {{!-- Navigation sits BELOW the number, and that order is the whole
+                point. This link leaves the page: on Android it deep-links
+                into the Maps app. If the number were below it, a student
+                would hand themselves to Maps, walk fifteen minutes, arrive,
+                and have nothing to ring. Contact first means the number is
+                already in their WhatsApp thread before they go, and leaving
+                costs nothing.
+
+                This replaces a button that drew the route on our OWN map,
+                one for one. Turn-by-turn navigation is road graphs, traffic
+                and satellites; nobody builds that to show somebody a room,
+                which is why Uber and every delivery app hands off to Google
+                or Apple Maps too. The in-map route also died the moment the
+                screen locked, which is exactly when a student is walking.
+                Google Maps is the map they already know how to read.
+
+                This also MOVES the control: it used to sit above the photos
+                and details, now it sits under the phone number. Navigation
+                is the last thing you want, after you know where you are
+                going and have someone to ring when you arrive.
+
+                A real href, not a click handler: it can be long-pressed,
+                opened in a new tab, and deep-links into the app. The href is
+                filled in by place-detail-view.js, which also picks walking
+                or driving from the last GPS fix, and removes the link
+                entirely if the coordinates are unusable. --}}
+          <div class="place-directions-bar">
+            <a class="btn btn-block open-in-gmaps" target="_blank" rel="noopener noreferrer"
+               data-lat="{{geometry.coordinates.[1]}}" data-lng="{{geometry.coordinates.[0]}}"
+               href="#">{{#_}}Directions in Google Maps{{/_}}</a>
+          </div>
+          {{!-- Below the directions, and that order matters. "I am taking
+                this room" is the last thing a student does, after they have
+                the number and know where it is. Put above, it reads as the
+                way to find out more - and a tap here takes a real room off
+                the map for everyone else. --}}
+          {{ claim_block id visible }}
+
+          {{!-- Grievance route required by the e-commerce listing rules, put
+                where a complaint actually starts: on the room itself. --}}
+          {{ report_block id name }}
+        </section>
+
+        {{#if survey_config}}
+        <section class="survey" id="survey"></section>
+        {{/if}}

@@ -1,0 +1,1869 @@
+/*
+ * This CSS file follows the default Shareabouts style.css.
+ * All rules herein will override the default Shareabouts styles.
+ * NOTE: "With great power comes great responsibility."
+ */
+
+
+/* =Header
+-------------------------------------------------------------- */
+
+
+/* =Media Queries
+-------------------------------------------------------------- */
+
+@media only screen and (min-width: 768px) {
+}
+
+@media only screen and (min-width: 1024px) {
+}
+
+@media only screen and (min-width: 1300px) {
+}
+/* "Yours" label above the user's own gold markers */
+.leaflet-tooltip.my-place-tooltip {
+  background: #E0A400;
+  border: none;
+  color: #412402;
+  font-weight: bold;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+}
+.leaflet-tooltip-top.my-place-tooltip::before {
+  border-top-color: #E0A400;
+}
+
+/* Highlighted "Directions" button (green = go / navigate).
+   .open-in-gmaps is the same button after it stopped drawing a route on our
+   own map and started handing off to Google Maps. Listed beside the old class
+   rather than given its own block: a student should see no visual change at
+   all, and one selector list cannot drift the way two copies would.
+   .get-directions is kept for now because place-detail-view.js still binds
+   it; no template renders it any more. */
+.get-directions,
+.open-in-gmaps {
+  background: #1a9850 !important;
+  border-color: #1a9850 !important;
+  color: #fff !important;
+  font-weight: bold;
+}
+
+/* Make the Directions button read like a button rather than shout like a
+   banner.
+
+   default.css:113 sets text-transform: uppercase on every .btn. On a label
+   this long that produced "DIRECTIONS IN GOOGLE MAPS" - twenty-five capitals
+   spanning the full width of a 320px phone, which is harder to read than the
+   sentence it was written as, not easier. Capitals remove the word shapes a
+   reader actually recognises.
+
+   The height was 42px. Apple asks for 44 and Android for 48; this is the
+   control a student taps last, often one-handed, sometimes walking. 48.
+
+   display:flex centres the label on its own rather than relying on
+   line-height matching the box, which is what made it sit a pixel high
+   before. */
+.place-directions-bar .open-in-gmaps,
+.place-directions-bar .open-in-gmaps:link,
+.place-directions-bar .open-in-gmaps:visited {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 10px 14px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 16px;
+  font-weight: 700;
+  border-radius: 8px;
+  text-align: center;
+  line-height: 1.25;
+}
+.get-directions:hover,
+.open-in-gmaps:hover {
+  background: #157a41 !important;
+  border-color: #157a41 !important;
+  color: #fff !important;
+}
+
+/* "My Location" pill button */
+#map .leaflet-control.locate-control {
+  border: none;
+  box-shadow: none;
+}
+#map .leaflet-bar a.locate-me {
+  width: auto !important;
+  height: 34px !important;
+  line-height: 34px !important;
+  padding: 0 14px 0 33px;
+  background-position: 11px center;
+  background-size: 15px 15px;
+  background-repeat: no-repeat;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: bold;
+  color: #1a73e8;
+  text-align: left;
+  border-radius: 18px !important;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.3);
+}
+#map .leaflet-bar a.locate-me:hover {
+  background-color: #f4f8ff;
+  color: #1558b0;
+}
+#map .leaflet-bar a.locate-me.locating {
+  color: #888;
+  opacity: 0.85;
+}
+
+/* Share button (blue, sits next to the green Directions button) */
+.share-place {
+  background: #1a73e8 !important;
+  border-color: #1a73e8 !important;
+  color: #fff !important;
+  font-weight: bold;
+}
+.share-place:hover {
+  background: #1558b0 !important;
+  border-color: #1558b0 !important;
+  color: #fff !important;
+}
+
+/* First-visit gate: blur the running map behind the sign-in panel.
+   #add-place-btn-container lives inside #map-container, so it blurs too. */
+body.signin-gate #map-container,
+body.signin-gate #geocode-address-bar,
+body.signin-gate #ticker,
+body.signin-gate #list-container {
+  filter: blur(7px);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Welcome bar for browsing students — identical size, place, and color
+   as the Add a Place button (btn-primary), but inert: pointer-events
+   none keeps it from acting like a button. */
+.browse-welcome {
+  pointer-events: none;
+  cursor: default;
+  text-align: center;
+}
+
+/* Full-width Directions bar under the listing header */
+.place-directions-bar {
+  margin: 10px 0;
+}
+.place-directions-bar .get-directions,
+.place-directions-bar .open-in-gmaps {
+  font-size: 16px;
+}
+
+/* PlaceListItemView renders every list row with template '#place-detail'
+   (place-list-view.js:27), so each row carries its own copy of this bar. The
+   href is filled in only for the detail panel (place-detail-view.js scopes it
+   to self.$el), so a row's copy keeps href="#" - and the new anchor carries
+   target="_blank", which turns a tap in the list into a blank duplicate tab.
+   The old button was merely dead there; this one is worse than dead. The bar
+   belongs to the room's own page. */
+#list-container .place-directions-bar { display: none; }
+
+/* "Posting as <username>" chip at the top of the add-place form */
+.posting-as {
+  background: #f1f3f4;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #444;
+  margin: 0 0 12px;
+}
+.posting-as-note {
+  color: #888;
+}
+
+/* "When will this room be free?" picker */
+.free-picker {
+  margin: 14px 0 10px;
+}
+.free-picker-label {
+  font-size: 14px;
+  font-weight: bold;
+  margin: 0 0 2px;
+}
+/* Says up front that not knowing is allowed, before they read the buttons. */
+.free-picker-help {
+  font-size: 12px;
+  color: #777;
+  margin: 0 0 8px;
+}
+.free-picker-kind {
+  display: flex;
+  gap: 6px;
+}
+.free-picker .free-kind {
+  flex: 1;
+  background: #fff;
+  color: #555;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 9px 3px;
+  /* "Not sure yet" and "Pick a month" are much wider than the old
+     Now/Month/Year, so the type shrinks to keep all three on one row. */
+  font-size: 12.5px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.free-picker .free-kind.is-active {
+  border: 2px solid #1a73e8;
+  color: #1a73e8;
+  font-weight: bold;
+  background: #f4f8ff;
+}
+.free-picker-months-label {
+  font-size: 12px;
+  color: #666;
+  margin: 10px 0 4px;
+}
+/* Eight Nepali month names, four to a row. They are far longer words than
+   "Sep"/"Oct", so the type is deliberately small and the padding tight —
+   the same fix the room-type chips needed to stay on one line. */
+.free-month-chips {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+.free-picker .free-month {
+  background: #fff;
+  color: #555;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 7px 2px;
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.free-picker .free-month.is-active {
+  border: 2px solid #1a73e8;
+  color: #1a73e8;
+  font-weight: bold;
+  background: #f4f8ff;
+  padding: 6px 1px; /* keep the box the same size as the 1px-border siblings */
+}
+.free-picker-date {
+  margin: 8px 0 0;
+  font-size: 13px;
+  font-weight: bold;
+  color: #854F0B;
+}
+.free-picker-preview {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #666;
+}
+/* Load-bearing reassurance: without it, the honest answer reads as the one
+   that gets your room ignored. */
+.free-picker-note {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #777;
+}
+.free-picker-note.is-hidden { display: none; }
+
+/* Availability badges — used in the form preview and on the place detail */
+.free-badge {
+  display: inline-block;
+  border-radius: 10px;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: bold;
+}
+.free-badge-now {
+  background: #eaf3de;
+  color: #27500a;
+}
+.free-badge-later {
+  background: #faeeda;
+  color: #854f0b;
+}
+/* Its own blue pair, not a reuse of the orange one: "nobody knows" is a
+   different kind of answer from "spoken for until Kartik", and must not
+   look like a milder version of it. */
+.free-badge-ask {
+  background: #e3f0fc;
+  color: #0b4a80;
+}
+.place-availability {
+  margin: 2px 0 6px;
+  clear: none;
+}
+/* Every other date on this page is a guess; this one is a fact. */
+.place-posted {
+  font-size: 12px;
+  color: #777;
+  white-space: nowrap;
+}
+.place-type-chip {
+  display: inline-block;
+  border-radius: 10px;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: bold;
+  background: #f1efe8;
+  color: #444;
+}
+
+/* College markers: small dark cap circle + white name chip.
+   Rooms stay the loudest color on the map. */
+.college-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #2c2c2a;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  font-size: 14px;
+  line-height: 1;
+}
+/* The college name, now a child of the pin rather than a Leaflet tooltip.
+   See the note in custom.js: as a tooltip it cost a forced layout per label
+   per frame. As a child it rides the pin's transform for nothing.
+   left:31px and the vertical centring are measured off the tooltip this
+   replaces, so nothing moved on screen. pointer-events:none keeps the tap
+   target the pin itself, exactly as the tooltip did. */
+.college-label-text {
+  position: absolute;
+  left: 31px;
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  background: #fff;
+  color: #2c2c2a;
+  font-size: 11px;
+  font-weight: bold;
+  padding: 2px 8px;
+  border-radius: 4px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+  pointer-events: none;
+}
+.hide-college-labels .college-label-text {
+  display: none;
+}
+
+/* Phone browse screen ONLY: the map stretches into the dead space and the
+   Add a Place button (or the welcome block) rides at the bottom of the
+   screen, leaving the lower map free for the future directions card.
+   Scoped to body:not(.content-visible): the moment ANY panel opens — the
+   add-place form, a pin's detail, the sign-in page — none of this applies
+   and the layout is exactly the stock deployed one (the stock rule already
+   hides the button while a panel is open). */
+@media only screen and (max-width: 59.9375em) {
+  body:not(.content-visible) #map {
+    height: calc(100vh - 9em);
+    min-height: 300px;
+  }
+  body:not(.content-visible) #add-place-btn-container {
+    position: absolute;
+    left: 12px;
+    right: auto;
+    bottom: 3.2em;
+    width: auto;
+    margin: 0;
+    padding: 0;
+    background: none;
+    box-shadow: none;
+    border: none;
+    /* Above the Leaflet panes (z 400-700), which otherwise paint over it
+       on real phones. */
+    z-index: 1100;
+  }
+  /* Signed in: a floating "+ Add a place" pill over the map */
+  body:not(.content-visible) #add-place-btn-container #add-place {
+    display: inline-block;
+    width: auto;
+    background: #00aaff;
+    color: #fff;
+    border: none;
+    border-radius: 22px;
+    padding: 10px 17px;
+    font-size: 15px;
+    box-shadow: 0 2px 9px rgba(0, 0, 0, 0.35);
+  }
+  body:not(.content-visible) #add-place-btn-container #add-place::before {
+    content: "+";
+    font-size: 19px;
+    font-weight: 700;
+    margin-right: 7px;
+    vertical-align: -1px;
+  }
+  /* Browsing: plain white welcome text over the map, no box */
+  body:not(.content-visible) #add-place-btn-container .browse-welcome {
+    display: inline-block;
+    width: auto;
+    background: none;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    text-align: left;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.75);
+    line-height: 1.4;
+  }
+  body:not(.content-visible) #add-place-btn-container .browse-welcome::after {
+    content: "Tap a pin — find your room.";
+    display: block;
+    font-size: 12px;
+    font-weight: normal;
+    opacity: 0.95;
+  }
+  body:not(.content-visible) #colophon {
+    display: none;
+  }
+  /* The activity feed as a single quiet line riding above the button:
+     latest item only, truncated, no avatars, no screen-filling list. */
+  body:not(.content-visible) #ticker {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1090;
+    background: rgba(255, 255, 255, 0.95);
+    max-height: 2.1em;
+    overflow: hidden;
+    padding: 3px 10px;
+    box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.15);
+  }
+  body:not(.content-visible) #ticker .recent-points li:not(:first-child) {
+    display: none;
+  }
+  body:not(.content-visible) #ticker .recent-points li {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 12px;
+    background: none;
+    margin: 0;
+    padding: 2px 0;
+  }
+  body:not(.content-visible) #ticker img {
+    display: none;
+  }
+  body.kk-routing #ticker,
+  body.kk-directions #ticker {
+    display: none;
+  }
+  /* The strip stays white; the theme's own text colour was too faint to
+     read on it. Dark grey for the sentence, KothaKhoj blue for the name
+     so the eye lands on who posted. */
+  body:not(.content-visible) #ticker .recent-points li,
+  body:not(.content-visible) #ticker .recent-points li a,
+  body:not(.content-visible) #ticker .recent-points li span,
+  body:not(.content-visible) #ticker .recent-points li time {
+    color: #333;
+    text-shadow: none;
+  }
+  body:not(.content-visible) #ticker .recent-points li strong,
+  body:not(.content-visible) #ticker .recent-points li strong a {
+    color: #007fbf;
+  }
+  /* No activity yet -> no empty white strip (older browsers without :has
+     simply show the empty strip, which is harmless) */
+  body:not(.content-visible) #ticker:not(:has(.recent-points li)) {
+    display: none;
+  }
+
+  /* While navigating to a room, everything makes way: header, search bar,
+     and the Add a Place button hide, and the map takes the whole screen
+     (map-view.js toggles body.kk-routing; the directions card floats on
+     the map itself). */
+  body.kk-routing #site-header,
+  body.kk-routing #geocode-address-bar {
+    display: none;
+  }
+  /* The welcome line and the Add-a-place pill sit exactly where the route
+     card opens, so they step aside for the WHOLE directions flow — from
+     the moment Directions is tapped, not only once walking starts. */
+  body.kk-directions #add-place-btn-container {
+    display: none;
+  }
+  body.kk-routing #map-container {
+    top: 0 !important;
+  }
+  body.kk-routing #map {
+    height: 100vh;
+    min-height: 300px;
+  }
+
+  /* Stock Shareabouts pins #map to 325px whenever a panel is open, and the
+     rule above that stretches it only fires when NO panel is open. So the
+     sign-in panel started 381px down and ran 256px past the bottom of the
+     screen: every way of signing in - Scan, Upload, even the password button -
+     was below the fold on a 375x812 phone.
+     The map is not what you are looking at while you sign in, so it stands
+     down for this one panel and the panel starts right under the header.
+     Nothing in the panel changes size; it just gets the room it needed. */
+  body.signin-screen #map-container {
+    display: none;
+  }
+  /* The pink ✕ is absolutely positioned 26px ABOVE the panel, because it was
+     drawn to float over the map. Take the map away and it lands inside the
+     site header, on top of the hamburger. So the panel opens a strip of its
+     own for it to sit in - 34px, which the panel can afford now. */
+  body.signin-screen #content {
+    padding-top: 34px;
+  }
+  body.signin-screen a.close-btn {
+    top: 4px;
+  }
+}
+
+/* Directions keep only the line + the bottom card: the turn-by-turn text
+   panel is noise for a walk-to-the-room flow */
+.leaflet-routing-container {
+  display: none;
+}
+
+/* Header Sign In as a direct link (routes to the /page/signin panel),
+   styled as the same solid chip as the List All Places button */
+.sign-in-link,
+.sign-in-link:visited,
+.sign-in-link:link {
+  background-color: #007fbf;
+  color: #eee;
+  font-size: 0.75em;
+  text-transform: uppercase;
+  text-align: center;
+  text-decoration: none;
+  float: right;
+  display: block;
+  padding: 0.5em 0.75em;
+  margin: 0.5em 0.5em 0 0.5em;
+  font-weight: 600;
+  border: 3px solid rgba(0,0,0,0.05);
+  border-radius: 3px;
+  box-shadow: -0.25em 0.25em 0 rgba(0,0,0,0.1);
+  cursor: pointer;
+}
+.sign-in-link:hover {
+  background-color: #00aaff;
+  color: #fff;
+}
+@media only screen and (min-width: 60em) {
+  .sign-in-link {
+    /* Same box as the List All Places button beside it; the top margin is
+       measured against it live (the JS-rendered pages nav shifts it down) */
+    font-size: 0.875em;
+    margin: 1.95em 0.75em 0 0.75em;
+    position: relative;
+    z-index: 3;
+  }
+}
+
+/* Sign-in panel — three blocks over the running map: continue browsing,
+   the id/pass form, and the get-an-account line */
+.signin-page {
+  max-width: 320px;
+  margin: 0 auto;
+  padding: 8px 4px 24px;
+}
+.signin-page h1 {
+  text-align: center;
+  font-size: 24px;
+  margin-bottom: 20px;
+}
+.signin-page .close-btn {
+  cursor: pointer;
+}
+.signin-intro {
+  text-align: center;
+  font-size: 14px;
+  color: #555;
+  margin: 0 0 12px;
+}
+.signin-who {
+  text-align: center;
+  font-size: 13px;
+  color: #555;
+  margin: 0 0 10px;
+}
+.signin-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  color: #999;
+  margin: 18px 0;
+  font-size: 13px;
+  text-transform: lowercase;
+}
+.signin-divider:before,
+.signin-divider:after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid #ddd;
+}
+.signin-divider span {
+  padding: 0 10px;
+}
+.signin-form label {
+  display: block;
+  font-size: 13px;
+  color: #555;
+  margin: 10px 0 4px;
+}
+.signin-form input[type="text"],
+.signin-form input[type="password"] {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px;
+  font-size: 16px; /* 16px stops iOS from zooming into the field */
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+.signin-submit {
+  margin-top: 14px;
+  background: #fff !important;
+  color: #1a73e8 !important;
+  border: 2px solid #1a73e8 !important;
+  font-weight: bold;
+}
+.signin-submit:hover {
+  background: #f4f8ff !important;
+}
+.signin-rule {
+  border: 0;
+  border-top: 1px solid #ddd;
+  margin: 20px 0 12px;
+}
+.signin-landlord {
+  text-align: center;
+  font-size: 14px;
+  color: #666;
+}
+.signin-landlord a {
+  color: #1a73e8;
+  font-weight: bold;
+}
+.signin-status {
+  text-align: center;
+  font-size: 15px;
+}
+
+/* GPS is the main way to place a room: a full-width button above the map,
+   with dragging demoted to the quiet line underneath. */
+.use-location-primary-wrap {
+  margin: 0 0 6px;
+}
+.use-location-primary,
+#content .use-location-primary {
+  display: block;
+  width: 100%;
+  background: #00aaff;
+  color: #fff;
+  border: none;
+  border-radius: 22px;
+  padding: 12px 0;
+  font-size: 15px;
+  font-weight: bold;
+  text-align: center;
+  cursor: pointer;
+}
+.use-location-primary::before {
+  content: "📍";
+  margin-right: 7px;
+}
+.use-location-primary:hover,
+#content .use-location-primary:hover {
+  background: #0098e5;
+  color: #fff;
+}
+.use-location-primary:disabled {
+  opacity: 0.75;
+  cursor: default;
+}
+/* The drag line is now the fallback, not the instruction — so it loses the
+   theme's yellow highlight and reads as a quiet alternative. */
+.drag-marker-instructions,
+#content .drag-marker-instructions {
+  text-align: center;
+  font-size: 12.5px;
+  color: #777;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0 0 10px;
+  font-weight: normal;
+}
+
+/* Room type as one-tap chips instead of a dropdown. The template nests the
+   radio inside its own label with a .radio-label-text span, so the span is
+   the chip and the radio itself is taken out of sight (not display:none —
+   that would drop it from the tab order and from screen readers). */
+/* The lane and house number, printed under the landmark. Quiet on purpose:
+   it is the second half of the title, not a field of its own. */
+/* "Only you can see this room." Deliberately loud - a poster who misses this
+   thinks their room is live and wonders why the phone never rings. Same
+   yellow as a warning rather than the quiet grey of the address line. */
+.place-hidden-notice {
+  margin: 0 0 0.5em;
+  padding: 0.5em 0.7em;
+  background: #fff4d6;
+  border-left: 4px solid #e8a33d;
+  color: #6b4b12;
+  font-size: 0.95em;
+  border-radius: 3px;
+}
+
+.place-address-line {
+  margin: 0 0 0.35em;
+  color: #666;
+  font-size: 0.95em;
+}
+
+/* ---- The address, asked on one line -------------------------------------
+   Landmark, lane and house number are one question, not three. Butwal is
+   navigated by "the AMDA hospital side, Amar Singh path" - nobody thinks of
+   those as three separate answers, and stacking them would ask the same
+   question three times down the form.
+
+   The row is built here because config.yml has no grouping concept: every
+   field renders as its own .field div, siblings inside one <fieldset>.
+
+   Floats, not inline-block: inline-block leaves a whitespace gap between
+   boxes that then has to be hacked out of the widths.
+
+   The widths add to 99%, not 100%. At 100% sub-pixel rounding pushed the
+   third box onto its own line on a 375px phone - measured, not guessed.
+   Every margin below is stated explicitly for the same reason: leaving one
+   out lets an earlier rule supply a margin and the row wraps again.
+
+   location_type is the field that comes next, so it clears the row. If a
+   field is ever inserted between path and room type, move the clear onto it,
+   or the radio buttons will ride up beside the last box. */
+.place-form .place-name-field,
+.place-form .place-house_number-field,
+.place-form .place-path-field {
+  float: left;
+}
+.place-form .place-name-field         { width: 44%; margin-right: 2%; }
+.place-form .place-house_number-field { width: 18%; margin-right: 2%; }
+.place-form .place-path-field         { width: 33%; margin-right: 0; }
+.place-form .place-location_type-field { clear: both; }
+
+/* One label for the whole row: "Location Name, House No., Path Name
+   (optional)". It is written into the first field's prompt in config.yml,
+   so it lives inside a 44%-wide column and has to run past that column's
+   right edge - which is fine, because the two labels it runs over are not
+   drawn. Measured at 291px, so it still fits a 320px phone without any
+   sideways scroll.
+
+   visibility: hidden, not display: none - the hidden labels must keep
+   taking up their line so all three boxes start at the same height. nowrap
+   on all three keeps every label exactly one line tall; without it
+   "HOUSE NO." wraps inside its narrow column and drops that box.
+
+   visibility: hidden also takes those labels away from screen readers, so
+   both inputs carry an aria-label in config.yml.
+
+   The two hidden labels are also display: block + overflow: hidden. They are
+   invisible, but nowrap text still counts towards the page's scroll width,
+   and on a 320px phone "Path Name (optional)" sitting in the third column
+   ran 11px past the form and gave the whole page a sideways scrollbar.
+   Clipping them costs nothing - nobody can see them anyway.
+
+   The one label that IS drawn is 291px wide. That fits a 320px phone with a
+   few pixels spare. If this line is ever translated into something longer,
+   or a fourth box is added, re-measure before shipping. */
+.place-form .place-name-field .field-label,
+.place-form .place-house_number-field .field-label,
+.place-form .place-path-field .field-label {
+  display: block;
+  white-space: nowrap;
+}
+.place-form .place-house_number-field .field-label,
+.place-form .place-path-field .field-label {
+  visibility: hidden;
+  overflow: hidden;
+}
+
+.place-form .radio-group {
+  margin: 2px 0 4px;
+}
+.place-form .radio-group label {
+  display: inline-block;
+  margin: 0 7px 7px 0;
+  cursor: pointer;
+}
+.place-form .radio-group input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.place-form .radio-group .radio-label-text {
+  display: inline-block;
+  border: 1px solid #d0cec6;
+  border-radius: 999px;
+  /* Sized so all three room types fit on ONE line at 360px — wrapping
+     "Flat" onto its own row made the group look unfinished. */
+  padding: 8px 11px;
+  font-size: 12.5px;
+  color: #444;
+  background: #fff;
+  font-weight: normal;
+  white-space: nowrap;
+}
+.place-form .radio-group label {
+  margin: 0 5px 6px 0;
+}
+.place-form .radio-group input[type="radio"]:checked + .radio-label-text {
+  background: #007fbf;
+  border-color: #007fbf;
+  color: #fff;
+  font-weight: bold;
+}
+/* Keyboard users must still see which chip has focus. */
+.place-form .radio-group input[type="radio"]:focus + .radio-label-text {
+  box-shadow: 0 0 0 2px rgba(0, 127, 191, 0.45);
+}
+
+/* The room description is a nice-to-have, not the point of the form — it
+   should not be the tallest thing on the screen. */
+.place-form textarea[name="description"] {
+  min-height: 3.4em;
+  height: 3.4em;
+}
+
+/* Comment box: two rows, and the name sits beside the button instead of
+   taking a block of its own. */
+#new_response textarea {
+  min-height: 3.4em;
+  height: 3.4em;
+}
+#new_response .field-textarea-field {
+  margin-bottom: 8px;
+}
+@media only screen and (min-width: 30em) {
+  #new_response .field:not(.textarea-field) {
+    display: inline-block;
+    width: 58%;
+    vertical-align: middle;
+    margin: 0 8px 0 0;
+  }
+  #new_response .submit-btn {
+    display: inline-block;
+    width: auto;
+    vertical-align: middle;
+  }
+}
+
+/* "use my location" as a small chip inside the drag banner */
+.use-location-chip {
+  display: inline-block;
+  background: #fff;
+  border: 1px solid #1a73e8;
+  color: #1a73e8;
+  border-radius: 14px;
+  padding: 3px 12px;
+  font-size: 13px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-top: 4px;
+}
+.use-location-chip:hover {
+  background: #f4f8ff;
+}
+.use-location-chip:disabled {
+  opacity: 0.75;
+}
+
+/* Numbered form steps; the dot turns into a green tick when done */
+.form-step {
+  margin: 14px 0 8px;
+  font-size: 14px;
+  font-weight: bold;
+  color: #1a73e8;
+}
+.form-step .step-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #1a73e8;
+  color: #fff;
+  font-size: 11px;
+  margin-right: 5px;
+  vertical-align: -3px;
+}
+.form-step .step-dot.done {
+  background: #3B6D11;
+}
+.form-step-where {
+  margin-top: 10px;
+}
+.form-step .form-step-note {
+  font-weight: normal;
+  font-size: 12px;
+  color: #666;
+}
+.use-location-status {
+  margin: 8px 0 0;
+  border-radius: 6px;
+  padding: 9px 11px;
+  font-size: 13px;
+  text-align: center;
+}
+.use-location-status.good {
+  background: #eaf3de;
+  color: #27500a;
+}
+.use-location-status.weak {
+  background: #faeeda;
+  color: #854f0b;
+}
+
+/* Inline problem box at the top of the sign-in panel (wrong password or
+   dead QR card) with the WhatsApp help button */
+.signin-error {
+  background: #fdecea;
+  border: 1px solid #f5c6c1;
+  color: #a32d2d;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: bold;
+  text-align: center;
+  margin: 0 0 14px;
+}
+.signin-error .signin-whatsapp,
+.signin-error .signin-whatsapp:hover {
+  display: inline-block;
+  margin-top: 8px;
+  background: #25D366 !important;
+  color: #fff !important;
+  font-weight: bold;
+  border: none;
+}
+
+/* QR login: the scan button under Sign in, and the webcam window */
+.signin-scan {
+  margin-top: 10px;
+  background: #fff !important;
+  color: #1a73e8 !important;
+  border: 2px solid #1a73e8 !important;
+  font-weight: bold;
+}
+.signin-scan:hover {
+  background: #f4f8ff !important;
+}
+.signin-scanner-hint {
+  text-align: center;
+  font-size: 13px;
+  font-weight: bold;
+  margin: 12px 0 6px;
+}
+.signin-scanner-video {
+  width: 100%;
+  border-radius: 8px;
+  background: #000;
+  min-height: 180px;
+}
+.signin-scanner-cancel {
+  margin-top: 6px;
+}
+.signin-scanner-stage {
+  position: relative;
+}
+.signin-scanner-guide {
+  display: none;
+}
+
+/* The camera used to open as a small box in the page flow, after the form and
+   both buttons. On a 375x812 phone that put it 146px BELOW the bottom of the
+   screen, and the code hides the Scan button at the same moment - so the
+   button vanished, the page got shorter, and nothing visible happened. Tapping
+   Scan now fills the screen, the way every scanner people already use works. */
+.signin-scanner.is-scanning {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  margin: 0;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+}
+.signin-scanner.is-scanning .signin-scanner-hint {
+  flex: none;
+  margin: 0;
+  padding: 18px 16px 12px;
+  font-size: 15px;
+  color: #fff;
+}
+.signin-scanner.is-scanning .signin-scanner-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.signin-scanner.is-scanning .signin-scanner-video {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  object-fit: cover;
+}
+/* The square the decoder actually reads. Cropping to the middle of the frame
+   is what makes it lock on fast, so the box has to show where that is -
+   otherwise people hold the card in a corner and wonder why nothing happens. */
+.signin-scanner.is-scanning .signin-scanner-guide {
+  display: block;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 62vw;
+  height: 62vw;
+  max-width: 280px;
+  max-height: 280px;
+  transform: translate(-50%, -50%);
+  border: 3px solid #fff;
+  border-radius: 12px;
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+.signin-scanner.is-scanning .signin-scanner-cancel {
+  flex: none;
+  margin: 0;
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 0;
+  padding: 16px;
+  font-size: 16px;
+  font-weight: bold;
+  background: #000;
+  color: #fff;
+}
+/* #content carries z-index 10, and a positioned element with a z-index starts
+   its own stacking context - so the overlay's z-index 1000 was being compared
+   against its siblings INSIDE #content, not against the site header at 40. The
+   header painted straight over the top of the camera, hiding the hint line.
+   Lifting #content for the duration is enough; the overlay covers the header
+   rather than the header having to be taken down and put back. */
+body.kk-scanning #content {
+  z-index: 1001;
+}
+.signin-logout {
+  margin-top: 10px;
+  text-align: center;
+}
+
+/* The panel's pink ✕ styles target a.close-btn with absolute positioning;
+   the sign-in panel's Continue button reuses that class for its behavior
+   but must stay a normal block button inside the panel. */
+.signin-page a.close-btn {
+  position: static;
+  float: none;
+  background: #1a73e8;
+  color: #fff;
+  font-size: 18px;
+  line-height: inherit;
+  border-radius: 4px;
+  padding: 12px;
+}
+.signin-page a.close-btn:hover {
+  background: #1558b0;
+  color: #fff;
+}
+
+/* Availability legend — stacked card, bottom-left of the map, above the
+   attribution line. pointer-events off so the map stays draggable. */
+.kk-legend {
+  position: absolute;
+  left: 10px;
+  bottom: 34px;
+  z-index: 1100;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 10px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: bold;
+  color: #333;
+  line-height: 1.7;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+}
+.kk-legend-row { white-space: nowrap; }
+.kk-legend-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+.kk-legend-dot-free { background: #e1264d; }
+.kk-legend-dot-taken { background: #a542e5; }
+.kk-legend-dot-ask { background: #2654d2; }
+/* Phone browse screen: the floating Add-a-place pill / welcome text lives
+   at the same corner (bottom 3.2em) — lift the legend above it. */
+@media only screen and (max-width: 59.9375em) {
+  body:not(.content-visible) .kk-legend { bottom: 8.5em; }
+}
+/* Laptop browse screen: default.css floats that same button into this very
+   corner from its own min-width:60em block (left 1.5em, bottom 2em), so the
+   legend has to clear it at this width too - the phone lift above is scoped
+   to max-width and never reaches here.
+
+   Two values, because the button changes height. default.css widens the
+   content pane at 80em, which leaves the map pane wider, which is enough for
+   "Welcome to KothaKhoj" to stop wrapping. Measured on the live site:
+
+       1279px   button 354 wide, two lines, 100 tall, top edge at 140
+       1280px   button 394 wide, one line,   69 tall, top edge at 109
+
+   so each value sits ~20px above the button it has to clear. A single value
+   tuned to 1440px leaves a 20px overlap at 1024px - that is the bug this
+   pair replaces, found by checking widths other than the one I was on.
+
+   rem, not em: .kk-legend sets font-size 12px, so an em value here would be
+   scaled by 12 rather than 16 and land short. */
+@media only screen and (min-width: 60em) {
+  .kk-legend { bottom: 10rem; }
+}
+@media only screen and (min-width: 80em) {
+  .kk-legend { bottom: 8rem; }
+}
+/* The route card owns the bottom of the screen for the whole directions
+   flow — locating, route preview and walking alike — so the pin legend
+   gets out of the way as soon as Directions is tapped. */
+body.kk-directions .kk-legend { display: none; }
+
+/* A shared link to a room that has gone. Sized to be readable at a glance on
+   a phone, because it is almost always opened from a WhatsApp group rather
+   than from the map. The Nepali line leads; the English sits under it. */
+.kk-dead-link {
+  padding: 28px 20px 32px;
+  text-align: center;
+}
+.kk-dead-link-np {
+  margin: 0 0 10px;
+  font-size: 22px;
+  line-height: 1.5;
+  color: #333;
+}
+.kk-dead-link-en {
+  margin: 0 0 22px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #666;
+}
+/* Taken is the ordinary, expected ending for a room - it is good news for the
+   landlord. Grey, not red: nothing has gone wrong. A connection failure keeps
+   the plain style because there the visitor SHOULD try again. */
+.kk-dead-link-taken .kk-dead-link-np { color: #444; }
+/* Two classes, not one: app.css sets `.btn { text-transform: uppercase }` at
+   the same specificity, so a single-class rule here is decided by source
+   order rather than intent - and it lost. Measured in the browser, not
+   guessed: with the base rule winning, the label rendered as
+   "अरू कोठा हेर्नुहोस् / SEE OTHER ROOMS", half shouting, and wrapped onto
+   three lines at 375px. Devanagari has no case, so uppercase only ever
+   damages the English half of a bilingual label.
+
+   min-height carries the button past the 44px tap target; at the inherited
+   padding it measured 39px, which is small for a thumb and this is the only
+   thing to press on the screen. */
+.kk-dead-link .kk-dead-link-browse {
+  display: inline-block;
+  padding: 14px 22px;
+  min-height: 48px;
+  box-sizing: border-box;
+  font-size: 16px;
+  line-height: 1.4;
+  border-radius: 8px;
+  text-decoration: none;
+  text-transform: none;
+}
+
+/* Save failed on the add-a-room form — loud enough not to be missed, since
+   the alternative was the button appearing to do nothing at all. */
+.kk-save-error {
+  background: #fdecea;
+  border: 1px solid #e6b3ad;
+  border-radius: 8px;
+  color: #8a2f24;
+  font-weight: bold;
+  padding: 10px 12px;
+  margin: 0 0 14px;
+}
+.kk-save-error a {
+  color: #8a2f24;
+  text-decoration: underline;
+}
+
+/* Owner contact block on the place detail page */
+.kk-contact .kk-contact-number {
+  font-size: 16px;
+  font-weight: bold;
+}
+/* Call first, WhatsApp second: most rooms on the map are occupied, so the
+   number is the point — and many Butwal landlords have no WhatsApp at all. */
+.kk-call-btn,
+#content a.kk-call-btn {
+  display: inline-block;
+  background: #007fbf;
+  color: #fff;
+  border: none;
+  margin-right: 6px;
+}
+.kk-call-btn:hover,
+.kk-call-btn:focus,
+#content a.kk-call-btn:hover,
+#content a.kk-call-btn:focus {
+  background: #006699;
+  color: #fff;
+}
+
+.kk-wa-btn,
+#content a.kk-wa-btn {
+  display: inline-block;
+  background: #25d366;
+  color: #fff;
+  border: none;
+}
+.kk-wa-btn:hover,
+.kk-wa-btn:focus,
+#content a.kk-wa-btn:hover,
+#content a.kk-wa-btn:focus {
+  background: #1ebe5d;
+  color: #fff;
+}
+
+
+/* ---- Business details page (e-commerce listing requirement) -------------
+   The platform has to publicly identify the firm behind it and name who
+   hears complaints, so this has to stay readable on a small phone. */
+#firm-line {
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #777;
+  text-align: center;
+}
+#firm-line a { color: #007fbf; }
+
+.kk-biz-lead {
+  font-size: 14px;
+  color: #555;
+}
+.kk-biz-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0 18px;
+  font-size: 14px;
+}
+.kk-biz-table th,
+.kk-biz-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 9px 10px 9px 0;
+  border-bottom: 1px solid #e4e4e4;
+  line-height: 1.5;
+}
+/* Nepali labels run long; give them room but never let the value column
+   collapse on a 320px screen. */
+.kk-biz-table th {
+  width: 42%;
+  font-weight: bold;
+  color: #333;
+  padding-right: 14px;
+}
+.kk-biz-table td { color: #444; }
+.kk-biz-en {
+  font-size: 13px;
+  color: #555;
+}
+@media only screen and (max-width: 26em) {
+  .kk-biz-table th,
+  .kk-biz-table td {
+    display: block;
+    width: auto;
+    border-bottom: 0;
+    padding: 0;
+  }
+  .kk-biz-table td {
+    padding: 0 0 10px;
+    border-bottom: 1px solid #e4e4e4;
+    margin-bottom: 10px;
+  }
+  .kk-biz-table th { padding-top: 2px; }
+}
+
+/* Report link on each room. Quiet by design — it must be findable when a
+   student needs it, without competing with the owner's contact button. */
+.kk-report {
+  /* Bottom margin matters: the comment form sits straight after this, and
+     without it "Leave a Comment" crowds the report line. */
+  margin: 14px 0 20px;
+  padding-top: 10px;
+  border-top: 1px solid #e4e4e4;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #777;
+}
+.kk-report-label { display: block; }
+.kk-report-link { color: #007fbf; text-decoration: underline; }
+.kk-report-or { color: #999; }
+.kk-biz-note { font-size: 12px; color: #777; }
+.kk-biz-list { margin: 6px 0 14px 18px; font-size: 14px; line-height: 1.7; }
+
+/* Active-filter chip on the map. Sits under the search box, out of the way of
+   the legend (bottom-left) and the Add-a-place pill (bottom). */
+.kk-filter-chip {
+  position: absolute;
+  /* Below the search box, not behind it: .merged-search-box occupies roughly
+     70-108px inside #map and carries z-index 1200, so a chip any higher is
+     simply hidden. Measured in the browser, not guessed. */
+  top: 7.4rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 80%;
+  padding: 6px 8px 6px 12px;
+  border-radius: 20px;
+  background: #007fbf;
+  color: #fff;
+  font-size: 13px;
+  font-weight: bold;
+  box-shadow: 0 1px 4px rgba(0,0,0,.35);
+}
+.kk-filter-chip-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Big enough to hit with a thumb without magnifying the chip itself. */
+.kk-filter-chip-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.25);
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+  text-decoration: none;
+}
+.kk-filter-chip-clear:hover,
+.kk-filter-chip-clear:focus { background: rgba(255,255,255,.4); color: #fff; }
+/* The directions flow takes over the screen; the chip must not sit on it. */
+body.kk-directions .kk-filter-chip { display: none; }
+
+/* A confirmation that fits the screen.
+   See KK.confirm in custom.js for why this is attached to <body> rather than
+   inside #content. z-index above the site header (40) and the route card, but
+   below the full-screen scanner (1000), which is the only thing that should
+   ever sit on top of a dialog. */
+.kk-dialog-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 900;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.kk-dialog {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  width: 100%;
+  max-width: 340px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+  text-align: left;
+}
+.kk-dialog-title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  color: #2c2c2a;
+}
+.kk-dialog-body {
+  margin: 0 0 18px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: #555;
+  /* A long room name must wrap rather than stretch the card off the screen. */
+  overflow-wrap: anywhere;
+}
+.kk-dialog-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+/* 44px minimum: the same reason the room pins are too small to tap reliably.
+   These two sit side by side, and one of them deletes a room. */
+.kk-dialog-buttons .btn {
+  min-height: 44px;
+  padding: 0 18px;
+  font-size: 15px;
+  font-weight: bold;
+  border-radius: 6px;
+  margin: 0;
+}
+.kk-dialog-cancel {
+  background: #f1f1f1 !important;
+  color: #2c2c2a !important;
+  border: none !important;
+}
+.kk-dialog-ok {
+  background: #1a73e8 !important;
+  color: #fff !important;
+  border: none !important;
+}
+/* Destructive actions are red, so the dangerous button never looks like the
+   safe one at a glance. */
+.kk-dialog-danger {
+  background: #d93025 !important;
+  color: #fff !important;
+}
+
+/* A message that does not stop you. See KK.toast in custom.js.
+   Sits above the map and the panel, below the dialog backdrop (900), and
+   never takes a tap: pointer-events none means a finger aimed at the map
+   underneath still reaches it. */
+.kk-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%) translateY(8px);
+  z-index: 880;
+  /* max-content, or a fixed element with no width shrinks to whatever the
+     nearest block will give it - the first attempt came out 188px wide and
+     three lines tall for one short sentence. */
+  width: max-content;
+  max-width: 88vw;
+  padding: 12px 18px;
+  border-radius: 22px;
+  background: rgba(30, 30, 30, 0.92);
+  color: #fff;
+  font-size: 14px;
+  font-weight: bold;
+  text-align: center;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.kk-toast.is-showing {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Room pins: a target a finger can actually hit.
+   The dots are 17x18 PNGs. WCAG's minimum target is 24x24, Apple says 44x44,
+   Android says 48x48, and a fingertip is about 40px across - so 17px was
+   failing every one of them, and "sometimes the pin doesn't get clicked" was
+   the result. Measured on a live pin: taps landed up to 14px from centre and
+   missed at 18px.
+   config.yml now asks Leaflet for a 44x44 box, and object-fit: none draws the
+   PNG at its true size centred inside it, so the dot looks pixel-identical
+   while the clickable area nearly triples.
+   The teardrops are left alone: their box already equals their intrinsic
+   25x41, so this rule renders them exactly as before.
+   If a browser is too old for object-fit the dot stretches to 44x44 and looks
+   soft - bigger and blurrier, not broken, and those phones cannot run the
+   WebGL basemap anyway. */
+img.leaflet-marker-icon {
+  object-fit: none;
+
+  /* A casing, so a room pin is not competing with the map it sits on.
+     Measured, not guessed. The dot artwork is 17x18 and only 3% of it is
+     white - a highlight, not an outline - so the green sits straight on
+     whatever is behind it. And a sample of 640,000 pixels of the real
+     Butwal basemap at zoom 14 is 24% white roads, 22% pale beige land,
+     10% river blue and ~9% pale vegetation green. Against the last of
+     those the green pin is the same hue as the ground; against white road
+     it measures 1.99:1, under the 3:1 a UI element needs.
+
+     Two white shadows stacked make a solid ring rather than a blur - one
+     alone is too faint to read at 17px. That ring is what separates the
+     pin from vegetation and from the river. The dark shadow underneath
+     does the opposite job: it is what separates it from white roads and
+     pale land, where a white ring is invisible. Neither alone covers the
+     whole map, which is why both are here.
+
+     Cheap: this is the ROOM pins only. The 141 college markers are
+     divIcons (.college-div-icon), not img, so none of this touches them -
+     which matters, because a filter on every one of those was what made
+     pinch-zoom crawl before. */
+  filter:
+    drop-shadow(0 0 1px #fff)
+    drop-shadow(0 0 1px #fff)
+    drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+}
+
+/* A group of rooms: one dark circle with the count in it. Dark and neutral on
+   purpose - red, violet and blue each MEAN something on this map, and a
+   circle in any of them would claim that meaning for a whole street.
+   The white ring and dark shadow are the pin casing's two jobs again (ring
+   against the green and river, shadow against white roads), done with
+   border and box-shadow instead of filter: there are few circles, but a
+   filter is exactly what made pinch-zoom crawl on the college markers.
+   The box is 40-54px (set in map-view.js), so it is a comfortable tap.
+   Two classes, not one: leaflet.css sets display:block on every
+   .leaflet-marker-icon and loads after this file, so a lone .place-cluster
+   loses the tie and the number drops into the top-left corner. */
+.leaflet-marker-icon.place-cluster {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #1a1917;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* Rent. The first number a student looks for, so it is the largest thing on
+   the page after the room's own name - and it sits above the availability
+   badge rather than in the label/value rows further down, where it would
+   read as one detail among eight. */
+.kk-rent {
+  margin: 6px 0 2px;
+  line-height: 1.2;
+}
+.kk-rent-amount {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1a1917;
+}
+.kk-rent-period {
+  font-size: 13px;
+  color: #66635f;
+}
+
+/* ==========================================================================
+   ROOM PHOTOS — one to a screen, swipe for the rest
+
+   Before this, every photo was a full-width block stacked vertically, so a
+   room with four photos pushed the rent, the phone number and Directions
+   right off the bottom of a phone. The page read as a photo album that
+   happened to have contact details somewhere underneath.
+
+   The strip is pure CSS. scroll-snap does the swiping, so it works with no
+   JavaScript at all; custom.js only adds the counter and the dots, and only
+   when there is more than one photo. If that never runs you still get a
+   working, swipeable strip - which is the right way round. */
+
+.kk-photos {
+  position: relative;
+  margin: 0 0 12px;
+}
+
+.kk-photos-strip {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;            /* firefox */
+  scroll-behavior: smooth;
+  border-radius: 10px;
+}
+.kk-photos-strip::-webkit-scrollbar { display: none; }
+.kk-photos-strip:focus-visible { outline: 2px solid #16181d; outline-offset: 2px; }
+
+.kk-photo {
+  /* 92%, not 100%. The missing 8% is the next photo peeking in from the
+     right, which is the whole affordance: it shows there is more instead of
+     announcing it. A single photo gets 100% below, because there is nothing
+     to peek at and a gap would just look like a mistake. */
+  flex: 0 0 92%;
+  scroll-snap-align: center;
+  margin: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #efede7;
+}
+.kk-photos[data-photo-count="1"] .kk-photo { flex-basis: 100%; }
+
+.kk-photo img {
+  display: block;
+  width: 100%;
+  /* Fixed shape, so four photos of four different sizes do not make the
+     strip jump in height as you swipe between them. */
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  height: auto;
+}
+/* Older phones that do not know aspect-ratio get a sane cap instead of a
+   full-height photo. */
+@supports not (aspect-ratio: 4 / 3) {
+  .kk-photo img { max-height: 62vw; object-fit: cover; }
+}
+
+/* "2 / 4", sat on the photo itself. Tells you where you are AND how many
+   there are - a dot row alone answers only the first question once the
+   count goes past four or five. */
+.kk-photos-count {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(26, 25, 23, 0.72);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  pointer-events: none;
+}
+
+.kk-photos-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.kk-photos-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #d0cdc6;
+  padding: 0;
+  border: 0;
+  /* A 7px target is unhittable. The dot stays 7px but the button around it
+     is 24px, which is the smallest target WCAG accepts. */
+  box-sizing: content-box;
+  border: 8px solid transparent;
+  background-clip: content-box;
+  cursor: pointer;
+}
+.kk-photos-dot.is-active { background: #1a1917; }
+
+/* Room LIST rows keep the old compact thumbnail.
+
+   PlaceListItemView renders rows with the same '#place-detail' template, so
+   every row carries a full copy of this strip. default.css:1191 used to keep
+   list photos to a floated 9em thumbnail via .place-item-attachment, and
+   renaming the classes orphaned that rule - leaving each row with a
+   full-width swipeable strip and a list you could no longer skim.
+
+   One photo, small, floated, no counter and no dots: a list row is a glance,
+   not a gallery. The room's own page is where the strip belongs. */
+.place-list .kk-photos {
+  float: left;
+  max-width: 9em;
+  margin: 0 1em 0.75em 0;
+}
+.place-list .kk-photos-strip { overflow: hidden; }
+.place-list .kk-photo { flex-basis: 100%; }
+.place-list .kk-photos-count,
+.place-list .kk-photos-dots { display: none; }
+
+/* "Your room is on the map" — the card a landlord sees right after posting.
+   Calm, not celebratory: they have just published their phone number to a
+   public map, and confetti would be the wrong note. The share button is the
+   one thing here that should look pressable, because a room nobody knows
+   about is a room nobody rings. */
+.kk-posted {
+  margin: 0 0 14px;
+  padding: 14px;
+  border-radius: 10px;
+  background: #f1f7f2;
+  border: 1px solid #cfe3d4;
+}
+.kk-posted-head {
+  margin: 0 0 4px;
+  font-size: 17px;
+  font-weight: 700;
+  color: #1a1917;
+  line-height: 1.3;
+}
+.kk-posted-tick {
+  display: inline-block;
+  margin-right: 6px;
+  color: #1a9850;
+  font-weight: 700;
+}
+.kk-posted-sub {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: #3b3a37;
+}
+.kk-posted .kk-posted-share,
+#content a.kk-posted-share {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  margin: 0;
+  padding: 10px 14px;
+  background: #1a9850;
+  border: 1px solid #1a9850;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  border-radius: 8px;
+  text-align: center;
+}
+.kk-posted-note {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #5a5854;
+}
+
+/* The warning, first thing in the card. Louder than the explanation under
+   it because it is the only line that changes what a student should DO: a
+   tap here hides somebody else's room, and only the owner knows whether it
+   has really gone. */
+.kk-claim-warn {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #1a1917;
+}
+.kk-claim-warn-sub {
+  margin: 0 0 12px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #55534e;
+}
+
+/* ==========================================================================
+   CLAIM — "I am taking this room"
+
+   Quiet on the way in, committed on the way out.
+
+   The first button is the quietest thing in the panel on purpose. It sits
+   below two buttons a student actually needs (the number, the walk), and a
+   tap on it takes a real room off a map that currently has two rooms on it.
+   Anything louder would collect curious taps, and a curious tap here costs
+   somebody else the room.
+
+   The second screen is where the weight goes: the consequence in a sentence,
+   then one dark button. That is the only button on this site styled as a
+   commitment, and it is the only one that changes what other people see. */
+
+.kk-claim { margin: 14px 0 4px; }
+
+.kk-claim .kk-claim-start,
+.kk-claim .kk-claim-start:link,
+.kk-claim .kk-claim-start:visited {
+  min-height: 48px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent;
+  color: var(--kk-ink-muted, #55534E);
+  box-shadow: inset 0 0 0 1px var(--kk-line-2, #D0CDC6);
+  font-weight: 600; font-size: 15px; line-height: 1.3;
+  text-transform: none; border-radius: 8px;
+  padding: 8px 12px; margin: 0; width: 100%;
+}
+
+/* The open state is a card, so it reads as a different moment rather than
+   as more buttons on the same list. */
+.kk-claim.kk-claim-open {
+  background: var(--kk-surface-2, #F7F5F0);
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--kk-line, #E8E6E1);
+  padding: 14px;
+}
+
+.kk-claim-why {
+  margin: 0 0 12px;
+  font-size: 14px; line-height: 1.5;
+  color: var(--kk-ink-2, #383633);
+}
+
+.kk-claim-phone-label {
+  display: block; margin: 0 0 6px;
+  font-size: 13px; line-height: 1.4;
+  color: var(--kk-ink-faint, #66635F);
+}
+
+.kk-claim-phone {
+  display: block; width: 100%; box-sizing: border-box;
+  min-height: 48px; margin: 0 0 12px; padding: 10px 12px;
+  font-size: 16px;            /* 16px or iOS Safari zooms the page on focus */
+  color: var(--kk-ink, #1A1917);
+  background: var(--kk-surface, #fff);
+  border: 1px solid var(--kk-line-2, #D0CDC6);
+  border-radius: 8px;
+}
+
+.kk-claim .kk-claim-go,
+.kk-claim .kk-claim-go:link,
+.kk-claim .kk-claim-go:visited {
+  min-height: 48px; width: 100%; margin: 0 0 8px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--kk-ink, #1A1917);
+  color: var(--kk-invert, #fff);
+  box-shadow: none; border: 1px solid var(--kk-ink, #1A1917);
+  font-weight: 600; font-size: 15px; text-transform: none;
+  border-radius: 8px; padding: 8px 12px;
+}
+.kk-claim .kk-claim-go[disabled] { opacity: 0.55; }
+
+.kk-claim .kk-claim-cancel,
+.kk-claim .kk-claim-cancel:link,
+.kk-claim .kk-claim-cancel:visited {
+  min-height: 44px; width: 100%; margin: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; box-shadow: none; border: 0;
+  color: var(--kk-ink-faint, #66635F);
+  font-weight: 600; font-size: 14px; text-transform: none;
+  padding: 8px 12px;
+}
+
+/* After the answer. Both states are calm - a refusal here is not the
+   student's mistake, and "Someone else is already asking about this room"
+   read in red would look like one. */
+.kk-claim-result {
+  margin: 0; padding: 14px;
+  font-size: 14px; line-height: 1.5;
+  border-radius: 10px;
+}
+.kk-claim.kk-claim-done .kk-claim-result {
+  background: var(--kk-surface-2, #F7F5F0);
+  color: var(--kk-ink-2, #383633);
+  box-shadow: inset 0 0 0 1px var(--kk-line, #E8E6E1);
+}
+.kk-claim.kk-claim-refused .kk-claim-result {
+  background: var(--kk-surface-3, #EFEDE7);
+  color: var(--kk-ink-2, #383633);
+  box-shadow: inset 0 0 0 1px var(--kk-line-2, #D0CDC6);
+}
+
+/* PlaceListItemView renders each row with template '#place-detail' — the same
+   template the panel uses — so the room list carries a full copy of the claim
+   block on every row. Claiming from a list row would take a room off the map
+   from a screen where the student never opened it, and would stack five of
+   these buttons on one screen. The block belongs to the room's own page. */
+#list-container .kk-claim { display: none; }

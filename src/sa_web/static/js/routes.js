@@ -1,0 +1,263 @@
+/*globals Backbone jQuery _ */
+
+var Shareabouts = Shareabouts || {};
+
+(function(S, $, console){
+  S.App = Backbone.Router.extend({
+    routes: {
+      '': 'viewMap',
+      'place/new': 'newPlace',
+      'place/:id': 'viewPlace',
+      'place/:id/new': 'viewNewPlace',
+      'place/:id/response/:response_id': 'viewPlace',
+      'place/:id/edit': 'editPlace',
+      'list': 'showList',
+      'page/:slug': 'viewPage',
+      'filter/:locationtype': 'filterMap',
+      ':zoom/:lat/:lng': 'viewMap'
+    },
+
+    initialize: function(options) {
+      var self = this,
+          startPageConfig,
+          filteredRoutes;
+
+      S.PlaceModel.prototype.getLoggingDetails = function() {
+        return this.id;
+      };
+
+      // Reject a place that does not have a supported location type. This will
+      // prevent invalid places from being added or saved to the collection.
+      S.PlaceModel.prototype.validate = function(attrs, options) {
+        var locationType = attrs.location_type,
+            locationTypes = _.map(S.Config.placeTypes, function(config, key){ return key; });
+
+        if (!_.contains(locationTypes, locationType)) {
+          console.warn(locationType + ' is not supported.');
+          return locationType + ' is not supported.';
+        }
+      };
+
+      // Global route changes
+      this.bind('route', function(route, router) {
+        S.Util.log('ROUTE', self.getCurrentPath());
+      });
+
+      filteredRoutes = this.getFilteredRoutes();
+      this.bind('route', function(route) {
+        // If the route shouldn't be filtered, then clear the filter. Otherwise
+        // leave it alone.
+        if (!_.contains(filteredRoutes, route)) {
+          this.clearLocationTypeFilter();
+        }
+      }, this);
+
+      this.loading = true;
+      this.collection = new S.PlaceCollection([]);
+      this.activities = new S.ActionCollection(options.activity);
+      this.appView = new S.AppView({
+        el: 'body',
+        mapEl: options.mapEl || '#map',
+        collection: this.collection,
+        activities: this.activities,
+
+        config: options.config,
+
+        defaultPlaceTypeName: options.defaultPlaceTypeName,
+        placeTypes: options.placeTypes,
+        surveyConfig: options.surveyConfig,
+        supportConfig: options.supportConfig,
+        pagesConfig: options.pagesConfig,
+        mapConfig: options.mapConfig,
+        placeConfig: options.placeConfig,
+        activityConfig: options.activityConfig,
+        userToken: options.userToken,
+        router: this
+      });
+
+      // Start tracking the history
+      var historyOptions = {pushState: true};
+      if (options.defaultPlaceTypeName) {
+        historyOptions.root = '/' + options.defaultPlaceTypeName + '/';
+      }
+
+      Backbone.history.start(historyOptions);
+
+      // Load the default page only if there is no page already in the url
+      if (this.isMapRoute(Backbone.history.getFragment())) {
+        let startPath = options.config.app.home_path || '';
+
+        startPageConfig = S.Util.findPageConfig(options.pagesConfig, {start_page: true});
+
+        if (startPageConfig && startPageConfig.slug && this.shouldOpenStartPage()) {
+          startPath = 'page/' + startPageConfig.slug
+        }
+
+        if (startPath) {
+          this.navigate(startPath, {trigger: true});
+        }
+      }
+
+      this.loading = false;
+    },
+
+    getCurrentPath: function() {
+      var root = Backbone.history.root,
+          fragment = Backbone.history.fragment;
+      return root + fragment;
+    },
+
+    viewMap: function(zoom, lat, lng) {
+      if (this.appView.mapView.locationTypeFilter) {
+        // If there's a filter applied, actually go to that filtered route.
+        this.navigate('/filter/' + this.appView.mapView.locationTypeFilter, {trigger: false});
+      }
+
+      this.appView.viewMap(zoom, lat, lng);
+    },
+
+    newPlace: function() {
+      this.appView.newPlace();
+    },
+
+    viewPlace: function(id, responseId) {
+      this.appView.viewPlace(id, responseId, this.loading);
+    },
+
+    viewNewPlace: function(id, responseId) {
+      this.appView.viewNewPlace(id, responseId, this.loading);
+    },
+
+    editPlace: function(){},
+
+    viewPage: function(slug) {
+      this.appView.viewPage(slug);
+    },
+
+    showList: function() {
+      this.appView.showListView();
+    },
+
+    // Whether this load opens the start page. A flavor may decide - the
+    // KothaKhoj one opens it once, and never on a college link. Without one
+    // it opens every time, as it always did.
+    shouldOpenStartPage: function() {
+      var KK = window.KothaKhoj;
+      return !(KK && KK.startPage) || KK.startPage.openNow();
+    },
+
+    isMapRoute: function(fragment) {
+      // This is a little hacky. I attempted to use Backbone.history.handlers,
+      // but there is currently no way to map the route, at this point
+      // transformed into a regex, back to the route name. This may change
+      // in the future.
+      return (fragment === '' || (fragment.indexOf('place') === -1 &&
+        fragment.indexOf('page') === -1 &&
+        fragment.indexOf('list') === -1));
+    },
+
+    getFilteredRoutes: function() {
+      return ['filterMap', 'viewPlace', 'showList', 'viewMap'];
+    },
+
+    clearLocationTypeFilter: function() {
+      this.setLocationTypeFilter('all');
+    },
+
+    setLocationTypeFilter: function(locationType) {
+      // TODO: This functionality should be moved in to the app-view
+      var $filterIndicator = $('#current-filter-type');
+      if ($filterIndicator.length === 0) {
+        $filterIndicator = $('<div id="current-filter-type"/>')
+          .insertAfter($('.menu-item-filter-type > a:first-child'));
+      }
+
+      // Get the menu information for the current location type
+      var filterMenu, menuItem;
+      if (S.Config.pages) {
+        filterMenu = _.findWhere(S.Config.pages, {'slug': 'filter-type'});
+      }
+      if (filterMenu) {
+        menuItem = _.findWhere(filterMenu.pages, {'url': '/filter/' + locationType});
+      }
+
+      if (locationType !== 'all') {
+        this.appView.mapView.filter(locationType);
+        if (this.appView.listView) {
+          this.appView.listView.filter({'location_type': locationType});
+        }
+
+        // Show the menu item title with the coresponding style
+        if (menuItem) {
+          $filterIndicator
+            .removeClass()
+            .addClass(locationType)
+            .html(menuItem.title);
+        }
+
+      } else {
+        // If the filter is 'all', we're unsetting the filter.
+        this.appView.mapView.clearFilter();
+        if (this.appView.listView) {
+          this.appView.listView.clearFilters();
+        }
+
+        $filterIndicator
+          .removeClass()
+          .addClass('unfiltered')
+          .empty();
+      }
+
+      // Tell the map which filter is on. The indicator above lives INSIDE the
+      // nav menu, so it disappears the moment the menu closes — leaving a
+      // student looking at a half-empty map with no idea why. The flavor
+      // draws a chip on the map itself from this event.
+      $(S).trigger('kk:filterchanged', [
+        locationType,
+        (menuItem && menuItem.title) || locationType
+      ]);
+    },
+
+    filterMap: function(locationType) {
+      this.setLocationTypeFilter(locationType);
+      if (locationType === 'all') {
+        if (this.appView.listView && this.appView.listView.isVisible()) {
+          this.navigate('/list', {trigger: false});
+        } else {
+          this.navigate('/', {trigger: false});
+        }
+      }
+
+      // Show the student the result of what they just tapped.
+      //
+      // The filter was applied immediately, but the menu panel stayed open on
+      // top of the map — so nothing appeared to happen, and the only way to
+      // discover it had worked was to press Back. Close the panel, but ONLY
+      // when it is holding a nav page: $panel carries exactly one of
+      // 'place-form', 'place-detail…' or 'page page-…', and closing it while
+      // someone is mid-way through adding a room would throw their typing
+      // away. The list is a separate element, so it is unaffected either way.
+      if (this.appView.$panel && this.appView.$panel.hasClass('page')) {
+        this.appView.hidePanel();
+      }
+
+      // ...and on a phone, close the ☰ menu itself, which is a DIFFERENT
+      // element from the panel above.
+      //
+      // The mobile menu is nav.access, opened by adding 'is-exposed'. The
+      // only code that ever removes it is the 'click .internal-menu-item a'
+      // handler in pages-nav-view.js, and a link earns that class only when
+      // its config entry has a slug and is not external. About, Sign in and
+      // Contact qualify, so tapping them closes the menu. The four filter
+      // entries are declared `external: true` with no slug, so they never
+      // reach that handler and the menu stayed open on top of the map — the
+      // student picked Single Room and still could not see the result.
+      //
+      // Doing it here rather than widening that handler keeps it to the
+      // filter routes: an external link that really does leave the site is
+      // left alone.
+      $('.access').removeClass('is-exposed');
+    }
+  });
+
+}(Shareabouts, jQuery, Shareabouts.Util.console));

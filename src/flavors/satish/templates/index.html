@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block site-title %}
+<a href="/{{ config.app.home_path }}">{{ config.app.name }}</a>
+{% endblock %}
+
+{% block page-title %}{% if place %}{{ place.properties.name|default:"Room for rent" }} — {{ config.app.title }}, Butwal{% else %}{{ config.app.title }} — Rooms and flats for rent in Butwal, Nepal{% endif %}{% endblock %}
+
+{% block meta %}
+  {% if place %}
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="{{ place.properties.name }}">
+    <meta name="twitter:description" content="{{ place.properties.description }}">
+    {% with attachment=place.properties.attachments|first %}
+    <meta name="twitter:image:src" content="{{ attachment.file }}">
+    {% endwith %}
+    {% comment %} TODO: Fill this in when we know if the username is from twitter
+      <meta name="twitter:creator" content="place.submitter.username">
+    {% endcomment %}
+
+    <!-- Facebook -->
+    <meta property="og:site_name" content="{{ config.app.title }}" />
+    <meta property="og:title" content="{{ place.properties.name }}" />
+    <meta property="og:description" content="{{ place.properties.description }}" />
+    {% with attachment=place.properties.attachments|first %}
+    <meta name="og:image" content="{{ attachment.file }}">
+    {% endwith %}
+  {% else %}
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="{{ config.app.title }}">
+    <meta name="twitter:description" content="{{ config.app.meta_description }}">
+
+    <!-- Facebook -->
+    <meta property="og:site_name" content="{{ config.app.title }}" />
+    <meta property="og:title" content="{{ config.app.title }}" />
+    <meta property="og:description" content="{{ config.app.meta_description }}" />
+  {% endif%}
+
+  <link rel="canonical" href="{{ request.scheme }}://{{ request.get_host }}{{ request.path }}">
+  <meta property="og:url" content="{{ request.scheme }}://{{ request.get_host }}{{ request.path }}" />
+
+  {% if place %}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Room",
+    "name": "{{ place.properties.name|default:'Room for rent'|escapejs }}",
+    "description": "{{ place.properties.description|default:''|escapejs }}",
+    "url": "{{ request.scheme }}://{{ request.get_host }}{{ request.path }}",
+    {% with attachment=place.properties.attachments|first %}{% if attachment %}"image": "{{ attachment.file }}",{% endif %}{% endwith %}
+    {% if place.geometry.coordinates %}"geo": {
+      "@type": "GeoCoordinates",
+      "latitude": {{ place.geometry.coordinates.1 }},
+      "longitude": {{ place.geometry.coordinates.0 }}
+    },{% endif %}
+    "address": {
+      "@type": "PostalAddress",
+      "addressLocality": "Butwal",
+      "addressRegion": "Lumbini Province",
+      "addressCountry": "NP"
+    }
+  }
+  </script>
+  {% endif %}
+{% endblock %}
+
+<!--
+  This will place content at the top of the side bar
+ -->
+{% block sidebar %}
+{% endblock %}
+
+<!--
+  This will place content in the colophon below the map
+ -->
+{% block colophon %}
+<p id="powered-by">Powered by <span class="openplans-logo">KothaKhoj</span></p>
+        {% comment %}
+          The e-commerce rules require the business behind the platform to be
+          identifiable from the site itself, not just on a filing.
+
+          This must stay a block comment. The hash form is single-line only;
+          spread over two lines it stops being a comment and Django prints the
+          text straight onto the page - which it did, live, directly above the
+          firm's registration number, until Satish caught it in a screenshot.
+        {% endcomment %}
+        <p id="firm-line">नेपाल कोठा खोज &middot; दर्ता नं. ५२/०८३/०८४ &middot; PAN १५७५६४७२१
+          &middot; सूचीकरण नं. ००१-३५७
+          &middot; <a href="/page/business" rel="internal">व्यवसायको विवरण</a></p>
+{% endblock %}
+
+<!--
+  Analytics, custom JS, and such go here
+ -->
+{% block includes %}
+{% endblock %}

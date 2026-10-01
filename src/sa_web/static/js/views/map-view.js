@@ -1,0 +1,1096 @@
+/*globals L Backbone _ */
+
+var Shareabouts = Shareabouts || {};
+
+(function(S, $, console){
+
+  S.MapView = Backbone.View.extend({
+    events: {
+      'click .locate-me': 'onClickGeolocate'
+    },
+    initialize: function() {
+      var self = this,
+          i, layerModel,
+          logUserZoom = function() {
+            S.Util.log('USER', 'map', 'zoom', self.map.getBounds().toBBoxString(), self.map.getZoom());
+          },
+          logUserPan = function(evt) {
+            S.Util.log('USER', 'map', 'drag', self.map.getBounds().toBBoxString(), self.map.getZoom());
+          };
+
+      // Init the map
+      self.map = L.map(self.el, self.options.mapConfig.options);
+
+      // Room pins that would sit on top of each other merge into one numbered
+      // circle when config.map.cluster is set. Without it - or if the
+      // markercluster file failed to load - this is the plain group it always
+      // was, so a missing library costs the grouping and nothing else.
+      self.clustered = !!(self.options.mapConfig.cluster && L.markerClusterGroup);
+      self.placeLayers = self.clustered ?
+        self.makeClusterGroup(self.options.mapConfig.cluster) : L.layerGroup();
+
+      // Add layers defined in the config file
+      function addMapLayer(config) {
+        var layer;
+
+        // type is required by Argo for fetching data, so it's a pretty good
+        // Argo indicator. Argo is this by the way: https://github.com/openplans/argo/
+        if (config.type && config.type === 'mapbox') {
+          if (!config.accessToken) { config.accessToken = S.bootstrapped.mapboxToken; }
+          try {
+            layer = L.mapboxGL(config)
+            layer.addTo(self.map);
+          } catch (error) {
+            // If creation of the GL layer fails for any reason, we may have to
+            // clean up.
+            if (layer) {
+              // The _glMap may never have been successfully set on the layer,
+              // so we need to patch it.
+              layer._glMap = {remove: function () {}};
+              layer.removeFrom(self.map);
+            }
+
+            // Many users may fail because of lack of WebGL support. For that
+            // case, provide a fallback set of tiles.
+            if (config.fallback) {
+              layer = addMapLayer(config.fallback);
+            }
+            else {
+              throw error;
+            }
+          }
+        } else if (config.type) {
+          layer = L.argo(config.url, config).addTo(self.map);
+        } else {
+          // Assume a tile layer
+          layer = L.tileLayer(config.url, config).addTo(self.map);
+        }
+        return layer;
+      }
+
+      _.each(self.options.mapConfig.layers, addMapLayer);
+
+      // Remove default prefix
+      self.map.attributionControl.setPrefix('');
+
+      // Init geolocation
+      if (self.options.mapConfig.geolocation_enabled) {
+        self.initGeolocation();
+      }
+
+      if (self.options.mapConfig.geocoding_enabled) {
+        // self.initGeocoding(); // merged into initLocalSearch above
+      }
+
+      self.map.addLayer(self.placeLayers);
+      self.initLocalSearch();
+
+      // Init the layer view cache
+      this.layerViews = {};
+
+      self.map.on('dragend', logUserPan);
+      $(self.map.zoomControl._zoomInButton).click(logUserZoom);
+      $(self.map.zoomControl._zoomOutButton).click(logUserZoom);
+
+      self.map.on('zoomend', function(evt) {
+        S.Util.log('APP', 'zoom', self.map.getZoom());
+      });
+
+      self.map.on('moveend', function(evt) {
+        S.Util.log('APP', 'center-lat', self.map.getCenter().lat);
+        S.Util.log('APP', 'center-lng', self.map.getCenter().lng);
+
+        $(S).trigger('mapmoveend', [evt]);
+      });
+
+      self.map.on('dragend', function(evt) {
+        $(S).trigger('mapdragend', [evt]);
+      });
+
+      // Bind data events
+      self.collection.on('reset', self.render, self);
+      self.collection.on('add', self.addLayerView, self);
+      self.collection.on('remove', self.removeLayerView, self);
+
+      // When the user saves a new place, immediately repaint that marker gold
+      // (and refresh the "Yours" legend) without waiting for a map move.
+      $(S).on('myplacesaved', function(evt, model) {
+        var lv = self.layerViews[model.cid];
+        if (lv) { lv.updateLayer(); }
+        self.updateMyPlacesLegend();
+      });
+    },
+    reverseGeocodeMapCenter: _.debounce(function() {
+      var center = this.map.getCenter();
+      var geocodingEngine = this.options.mapConfig.geocoding_engine || 'MapQuest';
+
+      S.Util[geocodingEngine].reverseGeocode(center, {
+        success: function(data) {
+          var locationData = S.Util[geocodingEngine].getLocation(data);
+          // S.Util.console.log('Reverse geocoded center: ', data);
+          $(S).trigger('reversegeocode', [locationData]);
+        }
+      });
+    }, 1000),
+    render: function() {
+      var self = this;
+
+      // Clear any existing stuff on the map, and free any views in
+      // the list of layer views.
+      //
+      // Clustered, each old view must be removed properly first: the room
+      // being looked at sits on the map itself rather than in placeLayers,
+      // so clearLayers alone would leave its pin behind.
+      if (this.clustered) {
+        _.each(this.layerViews, function(lv) { lv.remove(); });
+      }
+      this.placeLayers.clearLayers();
+      this.layerViews = {};
+
+      this.collection.each(function(model, i) {
+        self.addLayerView(model);
+      });
+    },
+    initGeolocation: function() {
+      var self = this;
+
+      var resetLocateButton = function() {
+        self.$('.locate-me').removeClass('locating').text('My Location');
+      };
+
+      var onLocationError = function(evt) {
+        var message;
+        resetLocateButton();
+        switch (evt.code) {
+          // Unknown
+          case 0:
+            message = 'An unknown error occured while locating your position. Please try again.';
+            break;
+          // Permission Denied
+          case 1:
+            message = 'Geolocation is disabled for this page. Please adjust your browser settings.';
+            break;
+          // Position Unavailable
+          case 2:
+            message = 'Your location could not be determined. Please try again.';
+            break;
+          // Timeout
+          case 3:
+            message = 'It took too long to determine your location. Please try again.';
+            break;
+        }
+        S.Util.alert(message);
+      };
+
+      var onLocationFound = function(evt) {
+        var msg;
+        resetLocateButton();
+        if(!self.map.options.maxBounds ||self.map.options.maxBounds.contains(evt.latlng)) {
+          self.map.setView(evt.latlng, 18);
+          // Let the app know the user located themselves, so that if the
+          // add-place form is open, the pin can be set to this spot right away
+          // (no need to drag the map first).
+          $(S).trigger('userlocated', [evt.latlng]);
+        } else {
+          msg = 'It looks like you\'re not in a place where we\'re collecting ' +
+            'data. I\'m going to leave the map where it is, okay?';
+          S.Util.alert(msg);
+        }
+      };
+
+      // Add the geolocation control link
+      this.$('.leaflet-top.leaflet-right').append(
+        '<div class="leaflet-control leaflet-bar locate-control">' +
+          '<a href="#" class="locate-me" role="button" title="Center on my location" aria-label="Center on my location">My Location</a>' +
+        '</div>'
+      );
+
+      // Bind event handling
+      this.map.on('locationerror', onLocationError);
+      this.map.on('locationfound', onLocationFound);
+
+      // Go to the current location if specified
+      if (this.options.mapConfig.geolocation_onload) {
+        this.geolocate();
+      }
+    },
+    initLocalSearch: function() {
+      var self = this;
+      var SHEET_CSV_URL = "/colleges.csv";  // see views.colleges_csv
+
+      function geocodeMapbox(query, callback) {
+        var params = {
+          access_token: S.bootstrapped.mapboxToken,
+          country: 'np',
+          proximity: [
+            self.options.mapConfig.options.center.lng,
+            self.options.mapConfig.options.center.lat
+          ].join(','),
+          bbox: '83.35,27.45,83.55,27.75',
+          limit: 5
+        };
+        $.getJSON('https://api.mapbox.com/geocoding/v5/mapbox.places/' + encodeURIComponent(query) + '.json', params)
+          .done(function(data) {
+            var results = (data.features || []).map(function(f) {
+              var center = L.latLng(f.center[1], f.center[0]);
+              var bounds = f.bbox ?
+                L.latLngBounds(L.latLng(f.bbox[1], f.bbox[0]), L.latLng(f.bbox[3], f.bbox[2])) :
+                L.latLngBounds(center, center);
+              return { name: f.place_name, center: center, bbox: bounds };
+            });
+            callback(results);
+          })
+          .fail(function() {
+            console.log('Mapbox geocode request failed for query:', query);
+            callback([]);
+          });
+      }
+
+      var places = [];
+
+      // Quote-aware, because the sheet publishes any name containing a
+      // comma as a QUOTED field. The old split(',') pushed the second half
+      // of such a name into the lat column, so the entry below arrived with
+      // lat = NaN; picking it in the search list then handed Leaflet an
+      // invalid LatLng and the whole search click died. See the same parser
+      // in the flavor's custom.js (KK.colleges.rows).
+      function parseCSV(text) {
+        var s = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
+        var lines = [], line = [], field = '', quoted = false;
+        for (var i = 0; i < s.length; i++) {
+          var c = s.charAt(i);
+          if (quoted) {
+            if (c !== '"') { field += c; }
+            else if (s.charAt(i + 1) === '"') { field += '"'; i++; }
+            else { quoted = false; }
+          } else if (c === '"') { quoted = true; }
+          else if (c === ',') { line.push(field); field = ''; }
+          else if (c === '\n') { line.push(field); field = ''; lines.push(line); line = []; }
+          else { field += c; }
+        }
+        if (field !== '' || line.length) { line.push(field); lines.push(line); }
+        lines = lines.filter(function(r) {
+          return r.some(function(f) { return String(f).trim() !== ''; });
+        });
+        if (lines.length < 2) { return []; }
+        var headers = lines[0].map(function(h) { return String(h).trim().toLowerCase(); });
+        var rows = [];
+        for (var j = 1; j < lines.length; j++) {
+          var cols = lines[j], row = {};
+          headers.forEach(function(h, idx) {
+            row[h] = String(cols[idx] == null ? '' : cols[idx]).trim();
+          });
+          rows.push(row);
+        }
+        return rows;
+      }
+
+      // Strip everything a student might type differently — spaces, dots,
+      // hyphens, capitals — leaving only letters and digits (Devanagari
+      // included). "AMDA College" and "amdacollege" both become "amdacollege".
+      var normalizeSearch = function(s) {
+        return String(s == null ? '' : s).toLowerCase()
+          .replace(/[^a-z0-9ऀ-ॿ]/g, '');
+      };
+
+      var loadFuse = function() {
+        var searchEntries = [];
+        places.forEach(function(p) {
+          p.displayName = p.name;
+          searchEntries.push(p);
+          if (p.aliases) {
+            // The sheet separates aliases with "/" (a comma would break the
+            // CSV column). Splitting on commas alone left every college with
+            // one giant unsplit string, so the fuzzy match scored against the
+            // whole blob — "kalika science" returned the management campus,
+            // and "kalika sector 1" returned sector 2.
+            p.aliases.split(/[\/,]/).forEach(function(alias) {
+              alias = alias.trim();
+              if (!alias) { return; }
+              searchEntries.push({ name: alias, displayName: p.name, lat: p.lat, lng: p.lng });
+            });
+          } else {
+            p.displayName = p.name;
+          }
+        });
+        searchEntries.forEach(function(e) { e._norm = normalizeSearch(e.name); });
+        self.localEntries = searchEntries;
+        self.localFuse = new Fuse(searchEntries, { keys: ['name'], threshold: 0.4 });
+      };
+
+      // Exact and prefix matches on the squashed form come FIRST, then the
+      // fuzzy matches. Fuzzy scoring alone sent "amda college" to Tilottama,
+      // because the common word "college" outweighed the short, distinctive
+      // "amda" — a student looking for their own college landed elsewhere.
+      self.localSearch = function(query) {
+        var n = normalizeSearch(query);
+        if (!n || !self.localEntries) { return []; }
+        var strong = [];
+        self.localEntries.forEach(function(e) {
+          var rank = null;
+          if (e._norm === n) { rank = 0; }
+          else if (e._norm.indexOf(n) === 0) { rank = 1; }
+          else if (n.indexOf(e._norm) === 0 && e._norm.length >= 3) { rank = 2; }
+          if (rank !== null) { strong.push({ item: e, rank: rank }); }
+        });
+        // Best rank first; among equals prefer the shortest (most exact) term.
+        strong.sort(function(a, b) {
+          return (a.rank - b.rank) || (a.item._norm.length - b.item._norm.length);
+        });
+        var seen = {}, out = [];
+        strong.forEach(function(s) {
+          var key = s.item.displayName || s.item.name;
+          if (seen[key]) { return; }
+          seen[key] = true;
+          out.push(s);
+        });
+        (self.localFuse ? self.localFuse.search(query) : []).forEach(function(f) {
+          var key = f.item.displayName || f.item.name;
+          if (seen[key]) { return; }
+          seen[key] = true;
+          out.push(f);
+        });
+        return out;
+      };
+
+      var setupFuseAndData = function() {
+        // Share the one sheet request with the flavor's college pins instead
+        // of fetching the same slow file twice. The fallback covers a partial
+        // deploy: this file ships inside dist/app.js while getSheetCsv ships
+        // inside dist/preload.js, and they are rsynced separately.
+        var fetchSheet = (S.Util && S.Util.getSheetCsv) ?
+          S.Util.getSheetCsv(SHEET_CSV_URL) :
+          $.get(SHEET_CSV_URL);
+
+        fetchSheet.done(function(csvText) {
+          parseCSV(csvText).forEach(function(row) {
+            // isFinite, not just truthiness: a malformed row (or a repeated
+            // header) yields lat = NaN, and a NaN entry that reaches the
+            // result list throws inside Leaflet the moment it is chosen.
+            var lat = parseFloat(row.lat), lng = parseFloat(row.lng);
+            if (row.name && isFinite(lat) && isFinite(lng)) {
+              places.push({
+                name: row.name,
+                lat: lat,
+                lng: lng,
+                aliases: row.aliases || ''
+              });
+            }
+          });
+          if (typeof Fuse === 'undefined') {
+            var staticUrl = (S.bootstrapped && S.bootstrapped.staticUrl) || '/static/';
+            var script = document.createElement('script');
+            script.src = staticUrl + 'libs/fuse/fuse.min.js';
+            script.onload = loadFuse;
+            script.onerror = function() {
+              // Without Fuse, localSearch bails at the localEntries guard, so
+              // the college half of the box goes dead while the address half
+              // keeps working. This only reaches the console - the student
+              // still just sees no colleges. Worth surfacing properly one day.
+              console.warn('Fuse failed to load; college search is unavailable.');
+            };
+            document.head.appendChild(script);
+          } else {
+            loadFuse();
+          }
+        })
+        .fail(function() {
+          // No sheet and no cached copy. The address geocoder still works, so
+          // the box stays usable — it just cannot offer colleges by name.
+          console.warn('College sheet unavailable; search falls back to addresses only.');
+        });
+      };
+
+      setupFuseAndData();
+
+      var $box = $(
+        '<div class="merged-search-box" style="position:absolute; z-index:1200; top:70px; left:50%; transform:translateX(-50%); background:white; border-radius:4px; box-shadow:0 1px 5px rgba(0,0,0,0.4);">' +
+          '<input type="text" placeholder="Search places or addresses..." style="width:320px; padding:10px; border:none; outline:none; border-radius:4px; font-size:15px;">' +
+          '<div class="merged-search-results" style="background:white;"></div>' +
+        '</div>'
+      );
+      $(self.el).append($box);
+
+      var $input = $box.find('input');
+      var $results = $box.find('.merged-search-results');
+      var geocodeTimer = null;
+
+      // Bumped by every event that makes the dropdown's contents obsolete:
+      // a keystroke, clearing the box, or choosing a result. A geocode reply
+      // remembers the value it was issued under and repaints only if it still
+      // matches.
+      //
+      // clearTimeout alone cannot do this. It cancels a PENDING timer, not a
+      // request already in flight - and the reply to that request is exactly
+      // what paints a dropdown over a box the student already cleared, or
+      // over the map they just chose. It also fixes replies arriving out of
+      // order: "kath" can land after "kathm" and would otherwise win.
+      var geocodeSeq = 0;
+
+      function renderResults(localMatches, mapboxMatches) {
+        $results.empty();
+        var seen = {};
+
+        localMatches.forEach(function(m) {
+          var place = m.item;
+          var label = place.displayName || place.name;
+          if (seen[label]) { return; }
+          seen[label] = true;
+          // Show the alias that matched next to the official name: two
+          // sectors of the same college look identical otherwise, and a
+          // student needs to see WHICH one they are about to open.
+          var matched = (place.displayName && place.name !== place.displayName) ?
+            place.name : null;
+          // Lead with the words the student actually typed, then the place
+          // it opens, so "kalika sector 1" reads back as itself instead of
+          // an official name they may not recognise.
+          var $item = $('<div style="padding:8px; cursor:pointer; border-top:1px solid #eee;"></div>')
+            .text('\uD83D\uDCCD ' + (matched || label));
+          if (matched) {
+            $item.append(
+              $('<span style="color:#888; font-size:13px;"></span>').text(' \u2014 ' + label));
+          }
+          $item.on('click', function() {
+            self.map.setView([place.lat, place.lng], 17);
+            $input.val(label);
+            $results.empty();
+            // The student has chosen. Without this the pending geocode still
+            // fires ~400ms later and repaints the dropdown over the map they
+            // just flew to. Assigning .val() from code does not fire `input`,
+            // so nothing else would ever clean this up.
+            clearTimeout(geocodeTimer);
+            geocodeSeq++;
+          });
+          $results.append($item);
+        });
+
+        mapboxMatches.forEach(function(result) {
+          // .text(), not a concatenated html string. result.name is
+          // f.place_name straight off the Mapbox geocoder - data we do not
+          // author. The LOCAL branch twelve lines above already does this
+          // correctly, and run-kk-tests.js:699 asserts "the place name is
+          // appended as escaped text, not raw html" - but its regex only
+          // ever inspected that local branch, so it passed while this line
+          // did the opposite.
+          var $item = $('<div style="padding:8px; cursor:pointer; border-top:1px solid #eee;"></div>')
+            .text('\uD83C\uDF0D ' + result.name);
+          $item.on('click', function() {
+            var zoom = self.map.getBoundsZoom(result.bbox);
+            self.map.setView(result.center, zoom);
+            $input.val(result.name);
+            $results.empty();
+            clearTimeout(geocodeTimer);   // see the local branch above
+            geocodeSeq++;
+          });
+          $results.append($item);
+        });
+      }
+
+      $input.on('input', function() {
+        var query = $(this).val();
+        $results.empty();
+        // Cancel BEFORE the early return. This used to sit below it, so
+        // emptying the box returned without cancelling, and ~400ms later the
+        // deleted query's results appeared under an empty box - where
+        // clicking one still moved the map.
+        //
+        // Stamping the generation must also happen before the return, so that
+        // clearing the box retires a request that has ALREADY gone out. The
+        // cancel only covers the one still waiting on the timer.
+        clearTimeout(geocodeTimer);
+        var mySeq = ++geocodeSeq;
+        if (!query) { return; }
+
+        var localMatches = self.localSearch ? self.localSearch(query).slice(0, 5) : [];
+        renderResults(localMatches, []);
+
+        geocodeTimer = setTimeout(function() {
+          geocodeMapbox(query, function(mapboxResults) {
+            if (mySeq !== geocodeSeq) { return; }   // a newer query won
+            renderResults(localMatches, mapboxResults);
+          });
+        }, 400);
+      });
+    },
+
+    initGeocoding: function() {
+      var geocoder;
+      var control;
+      var options = {
+          collapsed: false,
+          position: 'topright',
+          defaultMarkGeocode: false,
+          geocoder: geocoder
+        };
+
+      switch (this.options.mapConfig.geocoding_engine) {
+        case 'Mapbox':
+          options.geocoder = L.Control.Geocoder.mapbox(S.bootstrapped.mapboxToken, {
+            geocodingQueryParams: {            
+              proximity: [
+                this.options.mapConfig.options.center.lng,
+                this.options.mapConfig.options.center.lat
+              ].join(','),
+              country: 'np',
+              bbox: '83.35,27.45,83.55,27.75'
+            }
+          });
+          break;
+
+        default:
+          options.geocoder = L.Control.Geocoder.mapQuest(S.bootstrapped.mapQuestKey);
+          break;
+      }
+
+      if (this.options.mapConfig.geocode_field_label) {
+        options.placeholder = this.options.mapConfig.geocode_field_label
+      }
+
+      control = L.Control.geocoder(options)
+        .on('markgeocode', function(evt) {
+          result = evt.geocode || evt;
+          const zoom = this._map.getBoundsZoom(result.bbox);
+          const center = result.center;
+          this._map.setView(center, zoom);
+          $(S).trigger('geocode', [evt]);
+        })
+        .addTo(this.map);
+
+      // Move the control to the center
+      $('<div class="leaflet-top leaflet-center"/>')
+        .insertAfter($('.leaflet-top.leaflet-left'))
+        .append($(control._container))
+
+      Shareabouts.geocoderControl = control;
+    },
+    onClickGeolocate: function(evt) {
+      evt.preventDefault();
+      S.Util.log('USER', 'map', 'geolocate', this.map.getBounds().toBBoxString(), this.map.getZoom());
+      // Immediate feedback while GPS is working (it can take several seconds).
+      this.$('.locate-me').addClass('locating').text('Locating…');
+      this.geolocate();
+    },
+    geolocate: function() {
+      // Prefer the flavor's location engine (blue dot + accuracy circle +
+      // few-second refine) when it is loaded; fall back to plain Leaflet.
+      var self = this;
+      var geo = window.KothaKhoj && window.KothaKhoj.geo;
+      if (geo) {
+        geo.locate(this.map, {
+          onFirst: function(fix) {
+            self.map.setView([fix.lat, fix.lng], Math.max(self.map.getZoom(), 16));
+          },
+          onDone: function(fix) {
+            self.$('.locate-me').removeClass('locating').text('My Location');
+            if (fix) {
+              $(S).trigger('userlocated', [L.latLng(fix.lat, fix.lng)]);
+            }
+          },
+          onError: function(message) {
+            self.$('.locate-me').removeClass('locating').text('My Location');
+            S.Util.alert(message);
+          }
+        });
+        return;
+      }
+      this.map.locate({ enableHighAccuracy: true, maximumAge: 0 });
+    },
+    startDirections: function(destLatLng, placeModel) {
+      var self = this;
+      this.stopDirections();
+
+      if (!navigator.geolocation) {
+        S.Util.alert('Your browser does not support location. Directions are not available.');
+        return;
+      }
+
+      this.routingDest = destLatLng;
+      var KKR = window.KothaKhoj && window.KothaKhoj.route;
+      var contact = placeModel && placeModel.get ? placeModel.get('contact_number') : null;
+      var waHref = (KKR && contact) ? KKR.waLink(contact) : null;
+
+      var state = 'locating';
+      var profile = 'walking';
+      var lastRouted = null;
+      var lastSummary = null;
+      var started = false;
+      var arrived = false;
+      var lastRouteTime = 0;
+      // The route card owns the bottom of the screen from the moment
+      // Directions is tapped — not just once walking starts — so whatever
+      // normally sits down there (the pin legend, the welcome line, the
+      // Add-a-place pill) has to step aside for the whole flow.
+      $('body').addClass('kk-directions');
+      // Turn-by-turn: the steps Mapbox sends with the route, the shape of
+      // the route itself (to work out how far along the walker is), and the
+      // turn currently being shown on the card.
+      var instructions = null;
+      var routeCoords = null;
+      var nextStep = null;
+      var nextStepLead = '';
+      // Set when the GPS stops answering mid-walk, so the card can say so
+      // rather than freezing on a stale turn.
+      var gpsLost = null;
+
+      // Street names come from the map data, so escape before they go into
+      // the card's HTML.
+      var esc = function(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+          return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+      };
+
+      // How far along the route the walker is, as an index into the route's
+      // coordinates: the nearest point on the drawn line.
+      var positionIndex = function(latlng) {
+        if (!routeCoords || !routeCoords.length) { return 0; }
+        var best = 0, bestDist = Infinity;
+        for (var i = 0; i < routeCoords.length; i++) {
+          var d = latlng.distanceTo(routeCoords[i]);
+          if (d < bestDist) { bestDist = d; best = i; }
+        }
+        return best;
+      };
+
+      // Recompute the turn to show, and how far away it is.
+      var updateStep = function(latlng) {
+        if (!KKR || !instructions || !latlng) { return; }
+        var idx = positionIndex(latlng);
+        var step = KKR.nextInstruction(instructions, idx);
+        if (!step) { nextStep = null; return; }
+        nextStep = step;
+        var target = routeCoords && routeCoords[step.index];
+        nextStepLead = target ?
+          KKR.fmtStepDistance(latlng.distanceTo(target)) : '';
+      };
+
+      var MODES = [
+        { key: 'walking', label: 'Walk' },
+        { key: 'cycling', label: 'Cycle' },
+        { key: 'driving', label: 'Drive' }
+      ];
+
+      // One bottom card carries the whole flow:
+      // locating -> route preview (with Start) -> live navigation -> arrived.
+      var $card = this.$routeCard = $('<div class="kk-route-card"></div>').css({
+        position: 'absolute', left: '10px', right: '10px', bottom: '14px',
+        maxWidth: '380px', margin: '0 auto', background: '#fff', color: '#222',
+        borderRadius: '14px', boxShadow: '0 2px 14px rgba(0,0,0,0.35)',
+        padding: '12px 14px', zIndex: 1000, fontSize: '14px'
+      });
+      this.$el.append($card);
+      $card.on('mousedown dblclick touchstart pointerdown wheel', function(evt) {
+        evt.stopPropagation();
+      });
+
+      var render = function() {
+        if (!self.$routeCard) { return; }
+        var parts = (lastSummary && KKR) ?
+          KKR.fmtSummary(lastSummary.totalDistance, lastSummary.totalTime).split(' · ') :
+          null;
+        var big = parts ? parts[1] : '&hellip;';
+        var small = parts ? parts[0] : '';
+        var html = '';
+        if (state === 'locating') {
+          html =
+            '<div style="display:flex; align-items:center; justify-content:space-between;">' +
+              '<span>Locating&hellip;</span>' +
+              '<a href="#" class="kk-rc-cancel" style="color:#c0392b; font-weight:bold;' +
+                ' text-decoration:none; padding:0 4px;">&#10005;</a>' +
+            '</div>';
+        } else if (state === 'preview') {
+          var chips = '';
+          $.each(MODES, function(i, m) {
+            var on = m.key === profile;
+            chips += '<a href="#" class="kk-rc-mode" data-profile="' + m.key + '"' +
+              ' style="text-decoration:none; border-radius:14px; padding:4px 12px; font-size:12px;' +
+              ' border:1px solid ' + (on ? '#007fbf' : '#ddd') + ';' +
+              ' background:' + (on ? '#007fbf' : '#fff') + ';' +
+              ' color:' + (on ? '#fff' : '#444') + ';">' + m.label + '</a>';
+          });
+          // Show the opening move before they set off, so they know which
+          // way to turn out of the gate.
+          var firstStep = (instructions && instructions.length) ?
+            '<div style="font-size:13px; color:#444; margin:5px 0 0;">' +
+              'First: ' + esc(instructions[0].text) + '</div>' : '';
+          html =
+            '<div style="font-size:22px; font-weight:bold;">' + big +
+              ' <span style="font-size:13px; color:#888; font-weight:normal;">' + small + '</span></div>' +
+            firstStep +
+            '<div style="display:flex; gap:7px; margin:9px 0 11px;">' + chips + '</div>' +
+            '<div style="display:flex; gap:8px;">' +
+              '<a href="#" class="kk-rc-start" style="flex:2.2; background:#2e9e44; color:#fff;' +
+                ' border-radius:9px; text-align:center; padding:9px 0; font-weight:bold;' +
+                ' text-decoration:none;">Start</a>' +
+              '<a href="#" class="kk-rc-cancel" style="flex:1; border:1px solid #ddd; color:#666;' +
+                ' border-radius:9px; text-align:center; padding:9px 0; text-decoration:none;">Cancel</a>' +
+            '</div>';
+        } else if (state === 'nav') {
+          // The turn is the loudest thing on the card while walking; the
+          // distance/time left sits underneath it.
+          var turn = nextStep ?
+            '<div style="font-size:19px; font-weight:bold; line-height:1.25; color:#123;">' +
+              esc(nextStep.text) + '</div>' +
+            '<div style="font-size:13px; color:#2e7d32; font-weight:bold; margin:2px 0 7px;">' +
+              esc(nextStepLead) + '</div>' :
+            '<div style="font-size:12px; color:#2e7d32; margin:4px 0 9px;">You are on the way</div>';
+          var lost = gpsLost ?
+            '<div style="font-size:12px; color:#b8860b; font-weight:bold; margin:0 0 7px;">' +
+              esc(gpsLost) + '</div>' : '';
+          html =
+            turn + lost +
+            '<div style="font-size:13px; color:#666; margin:0 0 9px;">' + big +
+              ' <span style="color:#888;">' + small + ' left</span></div>' +
+            '<a href="#" class="kk-rc-stop" style="display:block; border:1px solid #e5b8b2; color:#c0392b;' +
+              ' border-radius:9px; text-align:center; padding:8px 0; font-weight:bold;' +
+              ' text-decoration:none;">Stop</a>';
+        } else if (state === 'arrived') {
+          html =
+            '<div style="font-size:18px; font-weight:bold; color:#1d7a34;">&#10003; You have arrived!</div>' +
+            '<div style="font-size:12px; color:#37623f; margin:5px 0 10px;">Like the room? Talk to the owner.</div>' +
+            '<div style="display:flex; gap:8px;">' +
+              (waHref ?
+                '<a href="' + waHref + '" target="_blank" rel="noopener" style="flex:2; background:#25a05a;' +
+                  ' color:#fff; border-radius:9px; text-align:center; padding:9px 0; font-weight:bold;' +
+                  ' text-decoration:none;">WhatsApp the owner</a>' : '') +
+              '<a href="#" class="kk-rc-close" style="flex:1; border:1px solid #ddd; color:#666;' +
+                ' border-radius:9px; text-align:center; padding:9px 0; text-decoration:none;">Close</a>' +
+            '</div>';
+        }
+        $card.css('background', state === 'arrived' ? '#e9f6ec' : '#fff');
+        $card.html(html);
+      };
+
+      $card.on('click', '.kk-rc-cancel, .kk-rc-stop, .kk-rc-close', function(evt) {
+        evt.preventDefault();
+        self.stopDirections();
+      });
+      $card.on('click', '.kk-rc-start', function(evt) {
+        evt.preventDefault();
+        if (started || state !== 'preview') { return; }
+        started = true;
+        state = 'nav';
+        render();
+        // On phones the header collapses while navigating (flavor CSS keys
+        // off this class) so the map gets almost the whole screen.
+        $('body').addClass('kk-routing');
+        self.map.invalidateSize();
+        if (lastRouted) {
+          self.map.setView(lastRouted, Math.max(self.map.getZoom(), 16));
+        }
+        beginWatch();
+      });
+      $card.on('click', '.kk-rc-mode', function(evt) {
+        evt.preventDefault();
+        var p = $(this).data('profile');
+        if (p === profile || state !== 'preview') { return; }
+        profile = p;
+        try { window.localStorage.setItem('kk-route-mode', p); } catch (e) {}
+        lastSummary = null;
+        // Drop the old profile's turns as well as its distance. Otherwise
+        // the card sat there advising "First: Walk east on Buddha Path"
+        // under a highlighted Drive chip until the driving route answered.
+        instructions = null;
+        routeCoords = null;
+        nextStep = null;
+        nextStepLead = '';
+        if (self.routingControl) {
+          self.map.removeControl(self.routingControl);
+          self.routingControl = null;
+        }
+        render();
+        makeRoute(p, true);
+      });
+
+      // Build the route for a given travel profile. Walking gives the
+      // shortest door-to-door path for nearby places, but Mapbox walking
+      // has a maximum distance; if it fails, fall back to driving once.
+      // Manual mode taps land here too (isFallback: no second fallback).
+      var makeRoute = function(prof, isFallback) {
+        var fitOnce = false;
+        var ctl;
+        // Taking a control off the map does NOT cancel the request it has in
+        // flight — it still answers, up to 30s later on bad data. Every
+        // handler below therefore checks it is still the live control, or a
+        // late reply would zoom the map to a route the student cancelled,
+        // overwrite the card with another profile's turns, or tear down a
+        // session they have since started to a different room.
+        var isCurrent = function() { return self.routingControl === ctl; };
+        ctl = L.Routing.control({
+          waypoints: [lastRouted, destLatLng],
+          router: L.Routing.mapbox(S.bootstrapped.mapboxToken, { profile: 'mapbox/' + prof }),
+          fitSelectedRoutes: false,
+          addWaypoints: false,
+          draggableWaypoints: false,
+          show: false,
+          collapsible: true,
+          lineOptions: {
+            styles: [
+              { color: '#ffffff', opacity: 0.9, weight: 9 },
+              { color: '#007fbf', opacity: 1, weight: 5 }
+            ]
+          },
+          // "You" is the familiar blue dot; the room already has its own
+          // pin on the map, so no second marker at the destination.
+          createMarker: function(i, wp) {
+            if (i === 0) {
+              return L.circleMarker(wp.latLng, {
+                radius: 8, color: '#fff', weight: 2,
+                fillColor: '#007fbf', fillOpacity: 1
+              });
+            }
+            return null;
+          }
+        }).addTo(self.map);
+        self.routingControl = ctl;
+
+        // Preview: zoom the map out so the student sees the WHOLE trip -
+        // where they are, where the room is, and the road between - with
+        // room for the bottom card. After Start, never re-zoom on re-routes.
+        ctl.on('routesfound', function(e) {
+          if (!isCurrent()) { return; }
+          var route = e.routes && e.routes[0];
+          if (route && !fitOnce && !started) {
+            fitOnce = true;
+            try {
+              self.map.fitBounds(L.latLngBounds(route.coordinates), {
+                paddingTopLeft: [30, 60],
+                paddingBottomRight: [30, 190]
+              });
+            } catch (err) {
+              self.map.fitBounds(L.latLngBounds([lastRouted, destLatLng]).pad(0.25));
+            }
+          }
+          if (route) {
+            // Keep the turn list and the line's shape: together they tell
+            // us which turn is next as the walker moves.
+            instructions = route.instructions || null;
+            routeCoords = route.coordinates || null;
+            updateStep(lastRouted);
+          }
+          if (route && route.summary) {
+            lastSummary = route.summary;
+          }
+          if (route) { render(); }
+        });
+
+        ctl.on('routingerror', function() {
+          if (!isCurrent()) { return; }
+          if (!isFallback && prof === 'walking') {
+            if (self.routingControl) {
+              self.map.removeControl(self.routingControl);
+              self.routingControl = null;
+            }
+            profile = 'driving';
+            render();
+            makeRoute('driving', true);
+          } else {
+            self.stopDirections();
+            S.Util.alert('Could not find a route to this place.');
+          }
+        });
+      };
+
+      // Live navigation: follow the GPS, re-route as the user moves, notice
+      // the arrival. Runs only after the student taps Start.
+      var beginWatch = function() {
+        lastRouteTime = Date.now();
+        // Keep the phone screen awake while walking (needs HTTPS; silently
+        // unavailable elsewhere).
+        if (navigator.wakeLock && navigator.wakeLock.request) {
+          navigator.wakeLock.request('screen').then(function(lock) {
+            self.routeWakeLock = lock;
+          }).catch(function() {});
+        }
+        self.geoWatchId = navigator.geolocation.watchPosition(function(pos) {
+          // Ignore inaccurate fixes (cell-tower guesses etc.)
+          if (pos.coords.accuracy > 60) { return; }
+          var now = L.latLng(pos.coords.latitude, pos.coords.longitude);
+
+          // Arrival: flip the card, stop following the GPS. The card offers
+          // the landlord's WhatsApp and stays until closed.
+          if (!arrived && KKR && KKR.isArrived(now.distanceTo(destLatLng))) {
+            arrived = true;
+            state = 'arrived';
+            render();
+            if (navigator.vibrate) { navigator.vibrate([200, 100, 200]); }
+            if (self.geoWatchId != null) {
+              navigator.geolocation.clearWatch(self.geoWatchId);
+              self.geoWatchId = null;
+            }
+            return;
+          }
+
+          // The turn on the card follows every GPS fix, even when we do not
+          // ask Mapbox for a new route — that is what makes it feel live.
+          var prevStep = nextStep;
+          var prevLead = nextStepLead;
+          var wasLost = gpsLost;
+          gpsLost = null;
+          updateStep(now);
+          if (nextStep !== prevStep || nextStepLead !== prevLead || wasLost) { render(); }
+
+          // Only re-route after moving ~15 meters, at most every 10 seconds.
+          if (now.distanceTo(lastRouted) < 15 ||
+              Date.now() - lastRouteTime < 10000) { return; }
+          lastRouted = now;
+          lastRouteTime = Date.now();
+          if (self.routingControl) {
+            self.routingControl.spliceWaypoints(0, 1, now);
+          }
+        }, function(err) {
+          // Losing the fix used to be silent: the card kept showing the last
+          // turn and distance for ever, looking exactly like a working
+          // route. Say so instead, and keep the route drawn so they can
+          // still read the line.
+          if (arrived || state !== 'nav') { return; }
+          gpsLost = (err && err.code === 1) ?
+            'Location permission was turned off' :
+            'Lost your location — waiting for GPS';
+          render();
+        }, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
+      };
+
+      render();
+
+      navigator.geolocation.getCurrentPosition(function(pos) {
+        // Ignore this result if the user ended the route, or started a newer
+        // one to a different place, while we waited for the GPS fix.
+        if (self.routingDest !== destLatLng) { return; }
+
+        lastRouted = L.latLng(pos.coords.latitude, pos.coords.longitude);
+        var saved = null;
+        try { saved = window.localStorage.getItem('kk-route-mode'); } catch (e) {}
+        profile = KKR ?
+          KKR.pickProfile(lastRouted.distanceTo(destLatLng), saved) : 'walking';
+        state = 'preview';
+        render();
+        makeRoute(profile, false);
+
+      }, function(err) {
+        self.stopDirections();
+        S.Util.alert('Could not get your location: ' + err.message);
+      }, { enableHighAccuracy: true, timeout: 15000 });
+    },
+    stopDirections: function() {
+      if (this.geoWatchId != null) {
+        navigator.geolocation.clearWatch(this.geoWatchId);
+        this.geoWatchId = null;
+      }
+      if (this.routingControl) {
+        this.map.removeControl(this.routingControl);
+        this.routingControl = null;
+      }
+      if (this.$routeCard) {
+        this.$routeCard.remove();
+        this.$routeCard = null;
+      }
+      if (this.routeWakeLock) {
+        try { this.routeWakeLock.release(); } catch (e) {}
+        this.routeWakeLock = null;
+      }
+      $('body').removeClass('kk-directions');
+      if ($('body').hasClass('kk-routing')) {
+        $('body').removeClass('kk-routing');
+        if (this.map) { this.map.invalidateSize(); }
+      }
+      this.routingDest = null;
+    },
+    addLayerView: function(model) {
+      this.layerViews[model.cid] = new S.LayerView({
+        model: model,
+        router: this.options.router,
+        map: this.map,
+        placeLayers: this.placeLayers,
+        clustered: this.clustered,
+        placeTypes: this.options.placeTypes,
+        userToken: this.options.userToken,
+        mapView: this
+      });
+      this.updateMyPlacesLegend();
+    },
+    updateMyPlacesLegend: _.debounce(function() {
+      var self = this;
+      // Show a small "Yours" legend only when at least one of the user's own
+      // places is on the map (so the gold color explains itself).
+      var hasMine = this.collection.some(function(model) {
+        return S.Util.isMyPlace(model, self.options.userToken);
+      });
+      if (hasMine && !this.$myLegend) {
+        this.$myLegend = $(
+          '<div class="leaflet-control leaflet-bar my-places-legend"' +
+          ' style="background:#fff; padding:4px 9px; font-size:12px; color:#7a5900;' +
+          ' display:flex; align-items:center; gap:5px; box-shadow:0 1px 4px rgba(0,0,0,0.3);">' +
+          '<span style="width:11px; height:11px; border-radius:50%; background:#E0A400;' +
+          ' display:inline-block;"></span>Yours</div>'
+        );
+        this.$('.leaflet-top.leaflet-left').append(this.$myLegend);
+      } else if (!hasMine && this.$myLegend) {
+        this.$myLegend.remove();
+        this.$myLegend = null;
+      }
+    }, 150),
+    removeLayerView: function(model) {
+      this.layerViews[model.cid].remove();
+      delete this.layerViews[model.cid];
+    },
+    makeClusterGroup: function(cfg) {
+      // Two radii, because the job changes with zoom. Zoomed out, rooms a
+      // street apart merge so the city view is readable. From close_from_zoom
+      // up (where the college links open) only dots that actually overlap
+      // merge, so students see separate rooms - and rooms in one building,
+      // which no zoom can separate, fan out into a ring when tapped
+      // (spiderfy). disableClusteringAtZoom was not used: it switches the
+      // fan-out off too, leaving same-building rooms stacked and untappable.
+      var wide = cfg.radius || 60,
+          close = cfg.close_radius || 12,
+          closeFrom = cfg.close_from_zoom || 16;
+
+      return L.markerClusterGroup({
+        maxClusterRadius: function(zoom) { return zoom >= closeFrom ? close : wide; },
+        showCoverageOnHover: false,
+        spiderfyOnMaxZoom: true,
+        // Spread fanned-out rooms far enough that their 44px tap boxes
+        // do not overlap each other.
+        spiderfyDistanceMultiplier: cfg.spread || 2,
+        iconCreateFunction: function(cluster) {
+          var n = cluster.getChildCount(),
+              size = n < 10 ? 40 : (n < 100 ? 46 : 54);
+          return L.divIcon({
+            html: '<span>' + n + '</span>',
+            className: 'place-cluster',
+            iconSize: L.point(size, size)
+          });
+        }
+      });
+    },
+    zoomInOn: function(latLng) {
+      this.map.setView(latLng, this.options.mapConfig.options.maxZoom || 17);
+    },
+
+    filter: function(locationType) {
+      var self = this;
+      console.log('filter the map', arguments);
+      this.locationTypeFilter = locationType;
+      this.collection.each(function(model) {
+        var modelLocationType = model.get('location_type');
+
+        if (modelLocationType &&
+            modelLocationType.toUpperCase() === locationType.toUpperCase()) {
+          self.layerViews[model.cid].show();
+        } else {
+          self.layerViews[model.cid].hide();
+        }
+      });
+    },
+
+    clearFilter: function() {
+      var self = this;
+      this.locationTypeFilter = null;
+      this.collection.each(function(model) {
+        self.layerViews[model.cid].render();
+      });
+    }
+  });
+
+})(Shareabouts, jQuery, Shareabouts.Util.console);

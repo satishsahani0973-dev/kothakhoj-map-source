@@ -1,0 +1,666 @@
+/*global _, moment, BinaryFile, loadImage, EXIF */
+
+var Shareabouts = Shareabouts || {};
+
+(function(S){
+  'use strict';
+
+  // Quality for every JPEG this app re-encodes in the browser before upload.
+  //
+  // The alternative is passing nothing, which does not mean "lossless" - it
+  // means the browser's own default of 0.92. At the size a room photo has
+  // already been reduced to by then, 0.82 is not tellable apart by eye and is
+  // roughly a third fewer bytes. Those bytes are paid for twice: once by the
+  // student uploading on mobile data, and again by every visitor who opens
+  // the room. The server caps size as a backstop (MAX_IMAGE_SIDE in the api),
+  // but it cannot undo quality that was already spent here.
+  S.JPEG_QUALITY = 0.82;
+
+  S.Util = {
+    getPrettyDateTime: function(datetime, format) {
+      if (format) {
+        return moment(datetime).format(format);
+      } else {
+        return moment(datetime).fromNow();
+      }
+    },
+
+    getAttrs: function($form) {
+      var attrs = {},
+          multivalues = [];
+
+      // Get values from the form. Make the item into an array if there are
+      // multiple values in the form, as in the case of a set of check boxes or
+      // a multiselect list.
+      _.each($form.serializeArray(), function(item) {
+        if (!_.isUndefined(attrs[item.name])) {
+          if (!_.contains(multivalues, item.name)) {
+            multivalues.push(item.name);
+            attrs[item.name] = [attrs[item.name]];
+          }
+          attrs[item.name].push(item.value);
+        } else {
+          attrs[item.name] = item.value;
+        }
+      });
+
+      return attrs;
+    },
+
+    findPageConfig: function(pagesConfig, properties) {
+      // Search the first level for the page config
+      var pageConfig = _.findWhere(pagesConfig, properties);
+      // If we got a hit, return the page config
+      if (pageConfig) return pageConfig;
+      // Otherwise, search deeper in each nested page config
+      for (var i = 0; i < pagesConfig.length; ++i) {
+        if (pagesConfig[i].pages) {
+          pageConfig = this.findPageConfig(pagesConfig[i].pages, properties);
+          if (pageConfig) return pageConfig;
+        }
+      }
+    },
+
+    // NOTE this is not in Shareabouts.js
+    // this will be "mobile" or "desktop", as defined in default.css
+    getPageLayout: function() {
+      // not IE8
+      if (window.getComputedStyle) {
+        return window.getComputedStyle(document.body,':after').getPropertyValue('content').replace(/"/g, '');
+      }
+
+      // IE8
+      return 'desktop';
+    },
+
+    // NOTE this is not in Shareabouts.js
+    // Keeps a cache of "sticky" form fields in memory. This cache is set when
+    // the user submits a place or survey form, and is used to prepopulate both
+    // forms. NOTE that the cache is shared between both forms, so, for example,
+    // `submitter_name` in both places will have a shared default value (if
+    // sticky: true in config.yml).
+    // ---- Telling somebody something ----------------------------------
+    // The browser's alert() is a full-height black slab on Android Chrome
+    // that cannot be styled, sized or placed. These route through the
+    // flavor's dialog instead, and fall back to the native one when the
+    // flavor script has not loaded - an ugly message still beats silence.
+    //
+    // One place to fall back from, rather than the same guard repeated at
+    // seventeen call sites.
+    //
+    // alert() for something that went wrong and needs acknowledging;
+    // toast() for something that went right and does not. Answering a
+    // success with a modal is worse than the success is good.
+    alert: function(message, title) {
+      var KK = window.KothaKhoj;
+      if (KK && KK.alert) { return KK.alert({ title: title || '', body: message }); }
+      window.alert(message);
+      return null;
+    },
+    toast: function(message) {
+      var KK = window.KothaKhoj;
+      if (KK && KK.toast) { return KK.toast(message); }
+      window.alert(message);
+      return null;
+    },
+
+    // Durable record of the IDs of places this browser created, so we can
+    // highlight "my places" on the map even after the session token rotates.
+    getMyPlaceIds: function() {
+      if (!window.localStorage) { return []; }
+      try {
+        return JSON.parse(window.localStorage.getItem('myPlaceIds')) || [];
+      } catch (e) {
+        return [];
+      }
+    },
+    addMyPlaceId: function(id) {
+      if (!window.localStorage || id == null) { return; }
+      var ids = S.Util.getMyPlaceIds();
+      if (ids.indexOf(id) === -1) {
+        ids.push(id);
+        // Private browsing (and a full quota) leave localStorage in place but
+        // make setItem throw, so the guard above is not enough. This runs as
+        // the FIRST thing in place-form-view's onSaveSuccess: an unguarded
+        // throw here skipped the redirect that follows it, so a landlord whose
+        // room had just been saved sat looking at an unchanged form and
+        // pressed Save again, filing the room twice. Losing the gold "Yours"
+        // highlight is the acceptable cost; losing the redirect is not.
+        try {
+          window.localStorage.setItem('myPlaceIds', JSON.stringify(ids));
+        } catch (e) {}
+      }
+    },
+    // One shared fetch of a published Google Sheet CSV, per URL, per page
+    // load. Returns a promise of the raw text.
+    //
+    // Two separate features read the college sheet — the search box in
+    // map-view.js and the college pins in the flavor's custom.js — and each
+    // used to request it independently. Every visitor therefore waited for
+    // the same slow third-party download twice (measured at 1.2-2.8s each,
+    // and Google answers with `private, max-age=300`, so no proxy in between
+    // can cache it either).
+    //
+    // The last good copy is kept in localStorage. Colleges are the only thing
+    // on the map until rooms arrive, and both call sites used to pass a
+    // success callback with no failure path at all — so a blip at Google made
+    // every college silently vanish with nothing said. Falling back to the
+    // previous copy keeps the map useful; a first-ever visit during an outage
+    // is the one case nothing can be done about here.
+    sheetCsvPromises: {},
+
+    // A random name for one attempt to save a room. Sent with the save and
+    // re-sent unchanged on every retry of it, so the server can tell "the
+    // same save, pressed again" from "a second room".
+    //
+    // crypto.randomUUID needs a recent browser AND a secure context. Plenty
+    // of the phones this runs on have neither, and a student whose browser
+    // is a year old must still be protected from duplicate rooms - so there
+    // is a fallback, and it is not optional.
+    //
+    // The fallback does not need to be unguessable, only unlikely to collide
+    // with another attempt: nobody gains anything by guessing one, and the
+    // server only ever compares it to keys it already holds.
+    newAttemptKey: function() {
+      try {
+        if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+          return window.crypto.randomUUID();
+        }
+        if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
+          var bytes = new Uint8Array(16);
+          window.crypto.getRandomValues(bytes);
+          var hex = '';
+          for (var i = 0; i < bytes.length; i++) {
+            hex += ('0' + bytes[i].toString(16)).slice(-2);
+          }
+          return hex;
+        }
+      } catch (e) {
+        // A locked-down browser can throw rather than simply lack the API.
+      }
+      return 'k' + Date.now().toString(36) +
+             Math.random().toString(36).slice(2, 12) +
+             Math.random().toString(36).slice(2, 12);
+    },
+
+    getSheetCsv: function(url) {
+      if (S.Util.sheetCsvPromises[url]) {
+        return S.Util.sheetCsvPromises[url];
+      }
+
+      var cacheKey = 'kkSheetCsv:' + url,
+          dfd = $.Deferred();
+
+      // Storage is best-effort on both sides: private browsing throws on
+      // write, and a cleared profile simply has nothing to give back.
+      function remember(text) {
+        try { window.localStorage.setItem(cacheKey, text); } catch (e) {}
+      }
+      function recall() {
+        try { return window.localStorage.getItem(cacheKey); } catch (e) { return null; }
+      }
+
+      $.ajax({url: url, dataType: 'text'})
+        .done(function(text) {
+          if (text) { remember(text); }
+          dfd.resolve(text);
+        })
+        .fail(function() {
+          var cached = recall();
+          if (cached) {
+            S.Util.console.warn('Sheet fetch failed; using the last copy this browser saw.');
+            dfd.resolve(cached);
+          } else {
+            dfd.reject();
+          }
+        });
+
+      S.Util.sheetCsvPromises[url] = dfd.promise();
+      return S.Util.sheetCsvPromises[url];
+    },
+
+    isMyPlace: function(model, userToken) {
+      var id = model.id || (model.get && model.get('id'));
+      var inMyList = id != null && S.Util.getMyPlaceIds().indexOf(id) !== -1;
+      // Device-bound places (shared accounts) are "mine" only on the
+      // device that created them — the same rule as the Delete button, so
+      // "Yours" never appears on a place this device can't manage.
+      if (model.get && model.get('device_bound')) { return inMyList; }
+      var placeToken = model.get && model.get('user_token');
+      if (userToken && placeToken && placeToken === userToken) { return true; }
+      return inMyList;
+    },
+
+    getStickyFields: function(userToken) {
+      // If local storage is available, retrieve the sticky field values from
+      // there. Otherwise, use a cache in memory.
+      if (!S.stickyFieldValues) {
+        if (window.localStorage) {
+          S.stickyFieldValues = JSON.parse(window.localStorage.getItem('stickyFieldValues')) || {};
+        } else {
+          S.stickyFieldValues = {};
+        }
+      }
+
+      // If there is no user token, don't set sticky fields.
+      if (userToken === null) {
+        console.debug('No user token, not setting sticky fields.');
+        return {};
+      }
+
+      return S.stickyFieldValues;
+    },
+
+    setStickyFields: function(data, surveyItemsConfig, placeItemsConfig) {
+      // Make an array of sticky field names
+      var stickySurveyItemNames = _.pluck(_.filter(surveyItemsConfig, function(item) {
+            return item.sticky; }), 'name'),
+          stickyPlaceItemNames = _.pluck(_.filter(placeItemsConfig, function(item) {
+            return item.sticky; }), 'name'),
+          // Array of both place and survey sticky field names
+          stickyItemNames = _.union(stickySurveyItemNames, stickyPlaceItemNames),
+          stickyFieldValues = S.Util.getStickyFields(),
+          userToken = data.user_token || null;
+
+      // If there is no user token, don't set sticky fields.
+      if (userToken === null) {
+        console.debug('No user token, not setting sticky fields.');
+        return;
+      }
+
+      // Sticky fields should be set relative to the current user token.
+      if (!S.stickyFieldValues[userToken]) {
+        S.stickyFieldValues[userToken] = {};
+      }
+
+      // Set the sticky field values in the cache
+      _.each(stickyItemNames, function(name) {
+        // Check for existence of the key, not the truthiness of the value
+        if (name in data) {
+          stickyFieldValues[userToken][name] = data[name];
+        }
+      });
+
+      // If local storage is available, save the sticky field values there.
+      if (window.localStorage) {
+        window.localStorage.setItem('stickyFieldValues', JSON.stringify(stickyFieldValues));
+      }
+    },
+
+    // ====================================================
+    // Event and State Logging
+
+    log: function() {
+      var args = Array.prototype.slice.call(arguments, 0);
+
+      if (window.gtag) {
+        this.googleAnalytics(args);
+      } else {
+        S.Util.console.log(args);
+      }
+    },
+
+    googleAnalyticsEventState: {},
+
+    googleAnalytics: function(args) {
+      var firstArg = args.shift(),
+          secondArg,
+          measure,
+          measures = [
+            // Metrics
+            'center-lat',
+            'center-lng',
+            'zoom',
+
+            // Dimensions
+            'panel-state',
+            'language-code',
+          ],
+          parameters;
+
+      switch (firstArg.toLowerCase()) {
+        case 'route':
+          // We expect route event arguments to have the form [page_path].
+          // This conforms to the legacy GA pageview tracking API.
+          //
+          // The gtag API will track pageviews automatically by default, but
+          // you can disable that and set up custom definitions for page_title
+          // and page_location.
+          parameters = {
+            "page_title": document.title,
+            "page_location": args[0],
+            ...this.googleAnalyticsEventState
+          };
+          args = ['event', 'page_view', parameters];
+          break;
+
+        case 'user':
+          // We expect user event arguments to have the form [category, action,
+          // label (optional), value (optional)]; this conforms to the legacy GA
+          // event tracking API.
+          //
+          // For the gtag API, you'll want to go into the settings and set up
+          // custom definitions for event_category, event_action, event_label,
+          // and event_value.
+          //
+          // Settings > Data Display > Custom Definitions > Custom Dimensions
+          //
+          const eventName = `${args[0]}-${args[1]}`.toLowerCase();
+          parameters = {
+            "event_category": args[0],
+            "event_action": args[1],
+            "event_label": args[2],
+            "event_value": args[3],
+          };
+          args = ['event', eventName, parameters];
+          break;
+
+        case 'app':
+          // We expect app event arguments to have the form [measure, value].
+          // In the ga API, we would use these to set custom dimensions or
+          // metrics on the tracker object.
+          //
+          // In the gtag API, we can set custom dimensions and metrics by
+          // including them as parameters in events. So, for example, to set
+          // dimension1 to "foo" and metric1 to 42, you would do:
+          //
+          //   gtag('event', 'some_event', {
+          //     'dimension1': 'foo',
+          //     'metric1': 42
+          //   });
+          //
+          // We keep track of the current values of custom dimensions and
+          // metrics in googleAnalyticsEventState, and include them in every
+          // event.
+          //
+          // NOTE: This means that if you set a custom dimension or metric
+          // once, it will be included in all subsequent events until you
+          // change it or the page is reloaded. This is similar to how the
+          // ga API works, but different from how you would normally use the
+          // gtag API.
+          //
+          measure = args.shift();
+          if (!measures.includes(measure)) {
+            this.console.error('No metrics or dimensions matching "' + measure + '"');
+            return;
+          }
+
+          if (args.length < 1) {
+            delete this.googleAnalyticsEventState[measure];
+          } else {
+            this.googleAnalyticsEventState[measure] = args[0];
+          }
+          return;
+
+        default:
+          return;
+      }
+
+      window.gtag.apply(window, args);
+    },
+
+    // For browsers without a console
+    console: window.console || {
+      log: function(){},
+      debug: function(){},
+      info: function(){},
+      warn: function(){},
+      error: function(){}
+    },
+
+    // ====================================================
+    // File and Image Handling
+
+    fileInputSupported: function() {
+      // http://stackoverflow.com/questions/4127829/detect-browser-support-of-html-file-input-element
+      var dummy = document.createElement('input');
+      dummy.setAttribute('type', 'file');
+      if (dummy.disabled) return false;
+
+      // We also need support for the FileReader interface
+      // https://developer.mozilla.org/en-US/docs/Web/API/FileReader
+      var fr;
+      if (!window.FileReader) return false;
+      fr = new FileReader();
+      if (!fr.readAsArrayBuffer) return false;
+
+      return true;
+    },
+
+    fixImageOrientation: function(canvas, orientation) {
+      var rotated = document.createElement('canvas'),
+          ctx = rotated.getContext('2d'),
+          width = canvas.width,
+          height = canvas.height;
+
+      switch (orientation) {
+          case 5:
+          case 6:
+          case 7:
+          case 8:
+              rotated.width = canvas.height;
+              rotated.height = canvas.width;
+              break;
+          default:
+              rotated.width = canvas.width;
+              rotated.height = canvas.height;
+      }
+
+
+      switch (orientation) {
+          case 1:
+              // nothing
+              break;
+          case 2:
+              // horizontal flip
+              ctx.translate(width, 0);
+              ctx.scale(-1, 1);
+              break;
+          case 3:
+              // 180 rotate left
+              ctx.translate(width, height);
+              ctx.rotate(Math.PI);
+              break;
+          case 4:
+              // vertical flip
+              ctx.translate(0, height);
+              ctx.scale(1, -1);
+              break;
+          case 5:
+              // vertical flip + 90 rotate right
+              ctx.rotate(0.5 * Math.PI);
+              ctx.scale(1, -1);
+              break;
+          case 6:
+              // 90 rotate right
+              ctx.rotate(0.5 * Math.PI);
+              ctx.translate(0, -height);
+              break;
+          case 7:
+              // horizontal flip + 90 rotate right
+              ctx.rotate(0.5 * Math.PI);
+              ctx.translate(width, -height);
+              ctx.scale(-1, 1);
+              break;
+          case 8:
+              // 90 rotate left
+              ctx.rotate(-0.5 * Math.PI);
+              ctx.translate(-width, 0);
+              break;
+          default:
+              break;
+      }
+
+      ctx.drawImage(canvas, 0, 0);
+
+      return rotated;
+    },
+
+    fileToCanvas: function(file, callback, options) {
+      var fr = new FileReader();
+
+      fr.onloadend = function() {
+          // get EXIF data
+          var exif = EXIF.readFromBinaryFile(new BinaryFile(this.result)),
+              orientation = exif.Orientation;
+
+          loadImage(file, function(canvas) {
+            // rotate the image, if needed
+            var rotated = S.Util.fixImageOrientation(canvas, orientation);
+            callback(rotated);
+          }, options);
+      };
+
+      fr.readAsArrayBuffer(file); // read the file
+    },
+
+    wrapHandler: function(evtName, model, origHandler) {
+      var newHandler = function(evt) {
+        model.trigger(evtName, evt);
+        if (origHandler) {
+          origHandler.apply(this, arguments);
+        }
+      };
+      return newHandler;
+    },
+
+    // Cookies! Om nom nom
+    // Thanks ppk! http://www.quirksmode.org/js/cookies.html
+    cookies: {
+      save: function(name,value,days) {
+        var expires;
+        if (days) {
+          var date = new Date();
+          date.setTime(date.getTime()+(days*24*60*60*1000));
+          expires = '; expires='+date.toGMTString();
+        }
+        else {
+          expires = '';
+        }
+        document.cookie = name+'='+value+expires+'; path=/';
+      },
+      get: function(name) {
+        var nameEQ = name + '=';
+        var ca = document.cookie.split(';');
+        for(var i=0;i < ca.length;i++) {
+          var c = ca[i];
+          while (c.charAt(0) === ' ') {
+            c = c.substring(1,c.length);
+          }
+          if (c.indexOf(nameEQ) === 0) {
+            return c.substring(nameEQ.length,c.length);
+          }
+        }
+        return null;
+      },
+      destroy: function(name) {
+        this.save(name,'',-1);
+      }
+    },
+
+    MapQuest: {
+      reverseGeocode: function(latLng, options) {
+        var mapQuestKey = S.bootstrapped.mapQuestKey,
+            lat, lng;
+
+        if (!mapQuestKey) throw "You must provide a MapQuest key for geocoding to work.";
+
+        lat = latLng.lat || latLng[0];
+        lng = latLng.lng || latLng[1];
+        options = options || {};
+        options.dataType = 'jsonp';
+        options.cache = true;
+        options.url = 'https://open.mapquestapi.com/geocoding/v1/reverse?key=' + mapQuestKey + '&location=' + lat + ',' + lng;
+        $.ajax(options);
+      },
+      getLocation: function(reverseGeocodedData) {
+        return reverseGeocodedData.results[0].locations[0];
+      },
+      getName: function(location) {
+        switch (location.geocodeQuality) {
+          case 'POINT':
+            // <street address>, <city> <state>
+            return location.street + ', ' + location.adminArea5 + ' ' + location.adminArea3;
+
+          case 'ADDRESS':
+            // <street address>, <city> <state>
+            return location.street + ', ' + location.adminArea5 + ' ' + location.adminArea3
+
+          case 'ZIP':
+            // <city>, <state> <zip>
+            return location.adminArea5 + ', ' + location.adminArea3 + ' ' + location.postalCode
+
+          case 'CITY':
+            // <city>, <state>
+            return location.adminArea5 + ', ' + location.adminArea3
+
+          case 'STREET':
+            // <street address>, <city> <state>
+            return location.street + ', ' + location.adminArea5 + ' ' + location.adminArea3
+        }
+      }
+    },
+
+    Mapbox: {
+      /* ========================================
+       * Because of an accident of history, geocoding with the MapQuest API was
+       * implemented first in Shareabouts. Thus, in order for geocoder results
+       * from anywhere else to be useful, they have to look like mapquest
+       * results.
+       *
+       * TODO: I'd rather see both the mapquest and mapbox results look more
+       * like GeoJSON, e.g. Carmen:
+       *
+       *     https://github.com/mapbox/carmen/blob/master/carmen-geojson.md
+       */
+
+      toMapQuestResult: function(result) {
+        result.latLng = {lat: result.center[1], lng: result.center[0]};
+
+        if (result.center)    delete result.center;
+        if (result.relevance) delete result.relevance;
+        if (result.address)   delete result.address;
+        if (result.context)   delete result.context;
+        if (result.bbox)      delete result.bbox;
+        if (result.id)        delete result.id;
+        if (result.text)      delete result.text;
+        if (result.type)      delete result.type;
+
+        return result;
+      },
+      toMapQuestResults: function(data) {
+        // Make Mapbox reverse geocode results look kinda like
+        // MapQuest results.
+        data.results = data.features;
+        if (data.results.length > 0) {
+          data.results[0] = {
+            locations: [ Shareabouts.Util.Mapbox.toMapQuestResult(data.results[0]) ],
+            providedLocation: { location: data.query.join(' ') }
+          };
+        }
+        return data;
+      },
+      reverseGeocode: function(latLng, options) {
+        var mapboxToken = S.bootstrapped.mapboxToken,
+            lat, lng;
+
+        if (!mapboxToken) throw "You must provide a Mapbox access token " +
+          "(Shareabouts.bootstrapped.mapboxToken) for geocoding to work.";
+
+        lat = latLng.lat || latLng[0];
+        lng = latLng.lng || latLng[1];
+        options = options || {};
+        options.dataType = 'json';
+        options.cache = true;
+        options.url = 'https://api.mapbox.com/geocoding/v5/mapbox.places/' + lng + ',' + lat + '.json?access_token=' + mapboxToken;
+        $.ajax(options);
+      },
+      getLocation: function(reverseGeocodedData) {
+        return reverseGeocodedData.features[0];
+      },
+      getName: function(location) {
+        return location.place_name;
+      }
+    }
+  };
+}(Shareabouts));

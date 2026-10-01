@@ -1,0 +1,295 @@
+/*globals _ Spinner Handlebars Backbone jQuery Gatekeeper */
+
+var Shareabouts = Shareabouts || {};
+
+(function(S, $, console){
+  S.PlaceFormView = Backbone.View.extend({
+    // View responsible for the form for adding and editing places.
+    events: {
+      'submit form': 'onSubmit',
+      'change input[type="file"]': 'onInputFileChange',
+      'change [data-group-required]': 'onRequiredOptionButtonChange'
+    },
+    initialize: function(){
+      var textareaEvent = 'oninput' in document ? 'input' : 'keyup blur';
+
+      S.TemplateHelpers.overridePlaceTypeConfig(this.options.placeConfig.items,
+        this.options.defaultPlaceTypeName);
+      S.TemplateHelpers.insertInputTypeFlags(this.options.placeConfig.items);
+
+      // Bind model events
+      this.model.on('error', this.onError, this);
+
+      // Listen to input changes on textareas. If they have a maxlength, then
+      // update the character count. If maxlength is not supported, then
+      // polyfill.
+      this.$el.on(textareaEvent, 'textarea', function(evt) {
+        var $counter = $(this).siblings('.remaining-characters').children('.character-counter'),
+            maxLen, curLen, remaining;
+
+        if (this.hasAttribute('maxlength')) {
+          maxLen = this.getAttribute('maxlength');
+          curLen = this.value.length;
+          remaining = maxLen - curLen;
+
+          if (remaining <= 20) {
+            $counter.parent('.remaining-characters').addClass('warning');
+
+            if (remaining <= 0) {
+              remaining = 0;
+              this.value = this.value.substr(0, maxLen);
+            }
+          } else {
+            $counter.parent('.remaining-characters').removeClass('warning');
+          }
+
+          $counter.text(remaining);
+          return false;
+        }
+      });
+    },
+    getTemplateContext: function() {
+      // Augment the model data with place types for the drop down
+      const context = _.extend({
+        place_config: this.options.placeConfig,
+        user_token: this.options.userToken,
+        language_code: S.bootstrapped.languageCode,
+        current_user: S.currentUser
+      }, S.Util.getStickyFields()[this.options.userToken] || {}, this.model.toJSON());
+
+      return context;
+    },
+    render: function(){
+      var context = this.getTemplateContext();
+
+      this.$el.html(Handlebars.templates['place-form'](context));
+      this.updatedRequiredOptionButtons();
+
+      // Init counter text
+      this.$('textarea').each(function() {
+        var $counter = $(this).siblings('.remaining-characters').children('.character-counter');
+
+        if (this.hasAttribute('maxlength')) {
+          $counter.text(this.getAttribute('maxlength'));
+        }
+      });
+
+      return this;
+    },
+    remove: function() {
+      this.unbind();
+    },
+    onError: function(model, res) {
+      // TODO handle model errors!
+      console.log('oh no errors!!', model, res);
+    },
+    // This is called from the app view
+    setLatLng: function(latLng) {
+      this.center = latLng;
+      this.$('.drag-marker-instructions, .drag-marker-warning').addClass('is-visuallyhidden');
+    },
+    setLocation: function(location) {
+      // We want to make sure we don't give the user the impression that their
+      // location is set when it isn't yet, so only update location-receivers
+      // if the center has been set.
+      if (this.center) {
+        this.location = location;
+        this.$('.location-receiver').html(location)
+      }
+    },
+    // Get the attributes from the form
+    getAttrs: function() {
+      var attrs = {},
+          locationAttr = this.options.placeConfig.location_item_name,
+          $form = this.$('form');
+
+      // Get values from the form
+      attrs = S.Util.getAttrs($form);
+
+      // Get the location attributes from the map
+      attrs.geometry = {
+        type: 'Point',
+        coordinates: [this.center.lng, this.center.lat]
+      };
+
+      if (this.location && locationAttr) {
+        attrs[locationAttr] = this.location;
+      }
+
+      return attrs;
+    },
+    onInputFileChange: function(evt) {
+      var self = this,
+          file,
+          attachment,
+          maxHeight,
+          maxWidth;
+
+      if(evt.target.files && evt.target.files.length) {
+        file = evt.target.files[0];
+        maxHeight = parseInt(evt.target.getAttribute("data-max-height"));
+        maxWidth = parseInt(evt.target.getAttribute("data-max-width"));
+
+        this.$('.fileinput-name').text(file.name);
+        S.Util.fileToCanvas(file, function(canvas) {
+          canvas.toBlob(function(blob) {
+            var fieldName = $(evt.target).attr('name'),
+                data = {
+                  name: fieldName,
+                  blob: blob,
+                  file: canvas.toDataURL('image/jpeg', S.JPEG_QUALITY)
+                };
+
+            attachment = self.model.attachmentCollection.find(function(model) {
+              return model.get('name') === fieldName;
+            });
+
+            if (_.isUndefined(attachment)) {
+              self.model.attachmentCollection.add(data);
+            } else {
+              attachment.set(data);
+            }
+            // toBlob with no quality argument uses the browser's default,
+            // which is 0.92 in every major browser. At the size this canvas
+            // has already been reduced to, 0.82 is not distinguishable by eye
+            // and is roughly a third fewer bytes - bytes the student pays to
+            // upload on mobile data, and every visitor pays to download.
+          }, 'image/jpeg', S.JPEG_QUALITY);
+        }, {
+          maxWidth: maxWidth || 800,
+          maxHeight: maxHeight || 800,
+          canvas: true
+        });
+      }
+    },
+    updatedRequiredOptionButtons: function(optionButtons) {
+      var groupNames = []
+
+      this.$(optionButtons || '[data-group-required]').each(function(index, btn) {
+        groupNames.push($(btn).attr('name'));
+      });
+
+      _.chain(groupNames).uniq().each(function(groupName) {
+        var groupOptions = this.$('[name="' + groupName + '"]');
+        if (groupOptions.is(':checked')) {
+          groupOptions.removeAttr('required');
+        } else {
+          groupOptions.attr('required', 'required');
+        }
+      }, this);
+    },
+    onRequiredOptionButtonChange: function(evt) {
+      this.updatedRequiredOptionButtons(evt.currentTarget)
+    },
+    onSaveSuccess: function() {
+      var router = this.options.router,
+          model = this.model,
+          newPlaceUrl = '/place/' + model.id + '/new';
+
+      // The room exists. Anything typed after this is a different room and
+      // must get its own key.
+      this._attemptKey = null;
+
+      // Remember this place as one of "mine" so it can be highlighted on the
+      // map, and tell the map to repaint it gold right away.
+      S.Util.addMyPlaceId(model.id);
+      $(S).trigger('myplacesaved', [model]);
+
+      // Redirect to the new-place page
+      S.Util.log('USER', 'new-place', 'successfully-add-place');
+      router.navigate(newPlaceUrl, {trigger: true});
+    },
+    onSaveError: function(model, response) {
+      S.Util.log('USER', 'new-place', 'fail-to-add-place');
+      // A failed save used to be completely silent: the spinner stopped and
+      // nothing else happened, so a landlord who had typed out a whole room
+      // just saw the button do nothing. Say what went wrong, and keep every
+      // value they typed so they can fix it and press Save again.
+      var status = (response && response.status) || 0;
+      var expired = (status === 401 || status === 403);
+      var message = expired ?
+        'Your sign-in has expired. Sign in again, then press Save — nothing you typed has been lost.' :
+        'Could not save this room just now. Check your internet and press Save again — nothing you typed has been lost.';
+      var $form = this.$('#place-form');
+      if (!$form.length) { $form = this.$el; }
+      $form.find('.kk-save-error').remove();
+      var $msg = $('<p class="kk-save-error"></p>').text(message);
+      if (expired) {
+        $msg.append(' ').append(
+          $('<a href="/page/signin">Sign in</a>')
+        );
+      }
+      $msg.prependTo($form);
+      var el = $msg[0];
+      if (el && el.scrollIntoView) {
+        try { el.scrollIntoView({ block: 'center' }); } catch (e) { el.scrollIntoView(); }
+      }
+    },
+    onSaveComplete: function() {
+      var $button = this.$('[name="save-place-btn"]'),
+          spinner = this.spinner;
+
+      $button.removeAttr('disabled');
+      if (spinner) {
+        spinner.stop();
+      }
+    },
+    onSubmit: Gatekeeper.onValidSubmit(function(evt) {
+      // Make sure that the center point has been set after the form was
+      // rendered. If not, this is a good indication that the user neglected
+      // to move the map to set it in the correct location.
+      if (!this.center) {
+        this.$('.drag-marker-instructions').addClass('is-visuallyhidden');
+        this.$('.drag-marker-warning').removeClass('is-visuallyhidden');
+
+        // Scroll to the top of the panel if desktop
+        this.$el.parent('article').scrollTop(0);
+        // Scroll to the top of the window, if mobile
+        window.scrollTo(0, 0);
+        return;
+      }
+
+      var router = this.options.router,
+          model = this.model,
+          // Should not include any files
+          attrs = this.getAttrs(),
+          $button = this.$('[name="save-place-btn"]'),
+          spinner, $fileInputs;
+
+      evt.preventDefault();
+
+      $button.attr('disabled', 'disabled');
+      this.spinner = new Spinner(S.smallSpinnerOptions).spin(this.$('.form-spinner')[0]);
+
+      S.Util.log('USER', 'new-place', 'submit-place-btn-click');
+
+      S.Util.setStickyFields(attrs, S.Config.survey.items, S.Config.place.items);
+
+      // One key per room being composed, not per request.
+      //
+      // Minted on the first Save and kept until a save actually succeeds, so
+      // a retry carries the SAME key and the server recognises it as the same
+      // attempt rather than a second room. Deliberately not minted in
+      // initialize() or render(): if this view were ever reused for a second
+      // room, a key from the first would suppress the second one entirely -
+      // a far worse bug than the duplicate it is meant to prevent.
+      //
+      // This is the other half of the fix. The error message tells the
+      // student to "press Save again", which is right - but only safe
+      // because the second press now says which attempt it belongs to.
+      if (!this._attemptKey) {
+        this._attemptKey = S.Util.newAttemptKey();
+      }
+
+      // Save and redirect
+      this.model.save(attrs, {
+        headers: { 'X-KothaKhoj-Idempotency-Key': this._attemptKey },
+        success: () => { this.onSaveSuccess(model); },
+        error: (m, response) => { this.onSaveError(model, response); },
+        complete: () => { this.onSaveComplete(model); },
+        wait: true
+      });
+    })
+  });
+
+}(Shareabouts, jQuery, Shareabouts.Util.console));

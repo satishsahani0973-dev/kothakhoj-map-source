@@ -1,0 +1,172 @@
+<html>
+<head>
+  <title>{{ config.app.title }} - Log In</title>
+  <style>
+    body {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 1rem;
+      width: 100%;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: sans-serif;
+    }
+    form {
+      display: flex;
+      flex-direction: column;
+    }
+    h2 {
+      text-align: center;
+    }
+    label {
+      width: 100%;
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+    }
+    label > span {
+      width: 10rem;
+    }
+    input {
+      padding: 0.25rem;
+      margin: 0.25rem;
+      flex-grow: 1;
+      width: 100%;
+    }
+    form > button {
+      margin-top: 1rem;
+    }
+    .hidden {
+      display: none;
+    }
+    #login-messages {
+      text-align: center;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- The form to log in to the API -->
+  {% comment %} <p>api_user: {{ api_user }}, errors: {{ errors }}</p> {% endcomment %}
+  <form id="login-form" method="POST" class="{% if api_user %}hidden{% endif %}">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ next_url|default:'' }}">
+    <h2>Log in to {{ config.app.title }}</h2>
+    <div><label><span>Username:</span> <input id="login-username" name="username" required type="text" autocomplete="username" value="{{ request.POST.username }}"></label></div>
+    <div><label><span>Password:</span> <input id="login-password" name="password" required type="password" autocomplete="current-password"></label></div>
+    <button type="submit">Log In</button>
+  </form>
+
+  {% if errors %}
+    <div id="login-messages">{{ errors }}</div>
+  {% elif api_user %}
+    <div id="login-messages">
+      {% if api_user.avatar_url %}
+        <img src="{{ api_user.avatar_url }}" alt="{{ api_user.username }} avatar">
+      {% endif %}
+      <p>You are now logged in as <strong>{{ api_user.name}} ({{ api_user.username }})</strong>.</p>
+      <p><a href="/">Return to the map</a> | <a href="/admin/">View the admin</a></p>'
+    </div>
+  {% else %}
+    <div id="login-messages" class="hidden"></div>
+  {% endif %}
+
+  <div id="login-loader" class="loader hidden"></div>
+
+  <!-- The form to log out of the API; depending on whether the user is logged
+       in or not, either this form or the one above will be hidden. -->
+  <form id="logout-form" method="POST" class="{% if not api_user %}hidden{% endif %}">
+    {% csrf_token %}
+    <input type="hidden" name="shadowmethod" value="DELETE">
+    <button type="submit">Log Out</button>
+  </form>
+
+  <script>
+    // Initialize variables for all the UI elements
+    var login = document.getElementById('login-form');
+    var username = document.getElementById('login-username');
+    var password = document.getElementById('login-password');
+    var messages = document.getElementById('login-messages');
+    var loader = document.getElementById('login-loader');
+    var logout = document.getElementById('logout-form');
+
+
+    // POST a new user session to log in to the API
+    function doLogin() {
+      messages.innerHTML = '';
+      messages.classList.add('hidden');
+      loader.classList.remove('hidden');
+    }
+
+    // DELETE the current user session to log out of the API
+    function doLogout() {
+      loader.classList.remove('hidden');
+    }
+
+    login.addEventListener('submit', function(evt) {
+      doLogin();
+    });
+
+    logout.addEventListener('submit', function(evt) {
+      doLogout();
+    });
+  </script>
+
+  <style>
+    .loader, .loader:before, .loader:after {
+      border-radius: 50%;
+      width: 2.5em;
+      height: 2.5em;
+      -webkit-animation-fill-mode: both;
+      animation-fill-mode: both;
+      -webkit-animation: load7 1.8s infinite ease-in-out;
+      animation: load7 1.8s infinite ease-in-out;
+    }
+    .loader {
+      color: #565656;
+      font-size: 10px;
+      margin: 80px auto;
+      position: relative;
+      text-indent: -9999em;
+      -webkit-transform: translateZ(0);
+      -ms-transform: translateZ(0);
+      transform: translateZ(0);
+      -webkit-animation-delay: -0.16s;
+      animation-delay: -0.16s;
+    }
+    .loader:before, .loader:after {
+      content: '';
+      position: absolute;
+      top: 0;
+    }
+    .loader:before {
+      left: -3.5em;
+      -webkit-animation-delay: -0.32s;
+      animation-delay: -0.32s;
+    }
+    .loader:after {
+      left: 3.5em;
+    }
+    @-webkit-keyframes load7 {
+      0%, 80%, 100% {
+        box-shadow: 0 2.5em 0 -1.3em;
+      }
+      40% {
+        box-shadow: 0 2.5em 0 0;
+      }
+    }
+    @keyframes load7 {
+      0%, 80%, 100% {
+        box-shadow: 0 2.5em 0 -1.3em;
+      }
+      40% {
+        box-shadow: 0 2.5em 0 0;
+      }
+    }
+  </style>
+</body>
+</html>

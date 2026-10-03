@@ -1262,6 +1262,19 @@
       // watches body's class, so an unconditional write would retrigger it.
       if (want === $body.hasClass('signin-screen')) { return; }
       $body.toggleClass('signin-screen', want);
+
+      // The map is back on screen, and it has to be measured again. Whatever
+      // closed the panel - Back, the ✕, a link to another page - had the app
+      // re-measure the map a moment before this ran (hidePanel / showPanel ->
+      // invalidateSize), while signin-screen still held it at display:none.
+      // So Leaflet stored its size as 0x0, the Mapbox streets layer shrank to
+      // nothing to match, and leaving Sign in without signing in brought back
+      // a blank map that only a reload would fix. Nothing else re-measures
+      // it: Leaflet only listens for the window resizing.
+      if (!want) {
+        var map = currentMap();
+        if (map) { map.invalidateSize(); }
+      }
     }
     if (window.MutationObserver) {
       // Body's class tells us a panel opened or closed; #content's children
@@ -2041,8 +2054,12 @@
         keyboard: false
       });
       // Tap a college: go there. Nothing is drawn on the map.
+      // At least 16, the zoom a /c/<college> link opens on: it is the lowest
+      // at which no two Butwal campuses overlap, and where rooms become
+      // teardrops (config.yml), so arriving at a college always shows its
+      // rooms the same way however the student got there.
       marker.on('click', function() {
-        map.setView([college.lat, college.lng], Math.max(map.getZoom(), 15));
+        map.setView([college.lat, college.lng], Math.max(map.getZoom(), 16));
       });
       marker.addTo(group);
     });

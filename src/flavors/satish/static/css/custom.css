@@ -280,20 +280,24 @@ body.signin-gate #list-container {
   font-size: 12px;
   font-weight: bold;
 }
+/* The badges speak the pins' colours, so a blue pin opens onto a blue
+   "Available now" and blue never means two things. They used to be green /
+   orange / blue - and once available-now pins turned blue, a blue badge
+   would have said "call and ask" under a pin that said "free".
+   Ask is wine to later's crimson, as on the map: both say "not today", and
+   wine is darker and greyer, so it reads as its own answer rather than a
+   milder "spoken for until Kartik". Every pair is at least 6.8:1. */
 .free-badge-now {
-  background: #eaf3de;
-  color: #27500a;
+  background: #e3ebfb;
+  color: #1d3f9e;
 }
 .free-badge-later {
-  background: #faeeda;
-  color: #854f0b;
+  background: #fce8ec;
+  color: #9d1a36;
 }
-/* Its own blue pair, not a reuse of the orange one: "nobody knows" is a
-   different kind of answer from "spoken for until Kartik", and must not
-   look like a milder version of it. */
 .free-badge-ask {
-  background: #e3f0fc;
-  color: #0b4a80;
+  background: #f1e5e8;
+  color: #6e1230;
 }
 .place-availability {
   margin: 2px 0 6px;
@@ -1108,9 +1112,10 @@ body.kk-scanning #content {
   border-radius: 50%;
   margin-right: 6px;
 }
-.kk-legend-dot-free { background: #e1264d; }
-.kk-legend-dot-taken { background: #a542e5; }
-.kk-legend-dot-ask { background: #2654d2; }
+/* The same three colours as the pins (config.yml, availability-rules). */
+.kk-legend-dot-free { background: #2654d2; }
+.kk-legend-dot-taken { background: #e1264d; }
+.kk-legend-dot-ask { background: #8a1538; }
 /* Phone browse screen: the floating Add-a-place pill / welcome text lives
    at the same corner (bottom 3.2em) — lift the legend above it. */
 @media only screen and (max-width: 59.9375em) {
@@ -1477,16 +1482,17 @@ body.kk-directions .kk-filter-chip { display: none; }
 }
 
 /* Room pins: a target a finger can actually hit.
-   The dots are 17x18 PNGs. WCAG's minimum target is 24x24, Apple says 44x44,
-   Android says 48x48, and a fingertip is about 40px across - so 17px was
-   failing every one of them, and "sometimes the pin doesn't get clicked" was
-   the result. Measured on a live pin: taps landed up to 14px from centre and
-   missed at 18px.
+   The dots were 17x18 PNGs (18x18 SVGs since 2026-10-03). WCAG's minimum
+   target is 24x24, Apple says 44x44, Android says 48x48, and a fingertip is
+   about 40px across - so 17px was failing every one of them, and "sometimes
+   the pin doesn't get clicked" was the result. Measured on a live pin: taps
+   landed up to 14px from centre and missed at 18px.
    config.yml now asks Leaflet for a 44x44 box, and object-fit: none draws the
-   PNG at its true size centred inside it, so the dot looks pixel-identical
+   dot at its true size centred inside it, so the dot looks the same size
    while the clickable area nearly triples.
-   The teardrops are left alone: their box already equals their intrinsic
-   25x41, so this rule renders them exactly as before.
+   The zoomed-in teardrops get the same treatment: a 44x49 box with the 25x41
+   SVG drawn at its true size in the middle. The big teardrop of the room
+   being looked at is the exception - see .kk-pin-big below.
    If a browser is too old for object-fit the dot stretches to 44x44 and looks
    soft - bigger and blurrier, not broken, and those phones cannot run the
    WebGL basemap anyway. */
@@ -1517,6 +1523,15 @@ img.leaflet-marker-icon {
     drop-shadow(0 0 1px #fff)
     drop-shadow(0 0 1px #fff)
     drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+}
+
+/* The room being looked at: the same teardrop a third bigger. Its box is the
+   pin's own 33x54, so the SVG is scaled to fill it rather than drawn at its
+   25x41 in the middle the way the rule above would. Being an SVG it stays
+   sharp. Two classes so this outranks the room-pin rule above, and only
+   object-fit: the casing still comes from that rule. */
+.leaflet-marker-icon.kk-pin-big {
+  object-fit: contain;
 }
 
 /* A group of rooms: one dark circle with the count in it. Dark and neutral on

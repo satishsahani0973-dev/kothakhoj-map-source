@@ -66,14 +66,20 @@ var Shareabouts = Shareabouts || {};
               this.styleRule.focus_icon : this.styleRule.icon;
             if (isMine) {
               // Clone the icon definition (don't mutate the shared config) and
-              // swap the image for the matching gold marker.
+              // swap the image for the gold one of the same shape:
+              // dot-2654d2.svg -> dot-gold.svg, pin-8a1538.svg -> pin-gold.svg.
               iconDef = _.extend({}, iconDef, {
-                iconUrl: /dot-/.test(iconDef.iconUrl) ?
-                  '/static/css/images/markers/dot-gold.png' :
-                  '/static/css/images/markers/marker-gold.png'
+                iconUrl: iconDef.iconUrl.replace(/-[0-9a-f]{6}\./, '-gold.')
               });
             }
-            this.layer = L.marker(this.latLng, {icon: L.icon(iconDef), alt: this.placeType.label});
+            // The room being looked at is drawn above every other pin. Leaflet
+            // stacks markers by latitude, so without this a neighbour just
+            // south of it covered the big teardrop's head.
+            this.layer = L.marker(this.latLng, {
+              icon: L.icon(iconDef),
+              alt: this.placeType.label,
+              zIndexOffset: this.isFocused ? 1000 : 0
+            });
           } else if (this.hasStyle()) {
             var styleDef = (this.isFocused && this.styleRule.focus_style) ?
               this.styleRule.focus_style : this.styleRule.style;

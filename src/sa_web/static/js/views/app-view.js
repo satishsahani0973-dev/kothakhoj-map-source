@@ -632,6 +632,18 @@ var Shareabouts = Shareabouts || {};
 
       this.unfocusAllPlaces();
 
+      // Set the room pages aside before the swap, instead of letting .html()
+      // destroy them. getPlaceDetailView builds each room's page once and
+      // reuses it, and the page binds its buttons once, in initialize - but
+      // .html() runs jQuery's cleanData over the old content, which strips
+      // every handler in it. So from the second time a room was opened, its
+      // Delete, Share and Directions buttons did nothing until a reload.
+      // Anything else in the panel is never shown again and is still cleaned.
+      var roomPages = _.pluck(_.values(this.placeDetailViews), 'el');
+      this.$panelContent.children().filter(function() {
+        return _.contains(roomPages, this);
+      }).detach();
+
       this.$panelContent.html(markup);
       this.$panel.show();
 

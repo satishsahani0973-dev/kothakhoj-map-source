@@ -40,6 +40,7 @@ var Shareabouts = Shareabouts || {};
           try {
             layer = L.mapboxGL(config)
             layer.addTo(self.map);
+            self.rebuildAfterContextLoss(layer, config);
           } catch (error) {
             // If creation of the GL layer fails for any reason, we may have to
             // clean up.
@@ -132,6 +133,59 @@ var Shareabouts = Shareabouts || {};
         }
       });
     }, 1000),
+
+    // A phone takes the map's graphics memory back while the browser sits in
+    // the background - switching to WhatsApp is enough. Mapbox GL 3.0.1 then
+    // reports the map "restored" when the tab returns, but never draws it
+    // again: the streets stay blank while the pins and college names, which
+    // Leaflet draws without WebGL, still show, until the page is reloaded.
+    // Reloading the style does not bring it back; a fresh layer does, so
+    // that is what this swaps in, built from the same config. Pins, open
+    // panels and half-typed forms are not touched. The layer lives alone in
+    // the tile pane, below everything else, so the new one lands where the
+    // old one was.
+    //
+    // A browser does not always announce that the graphics came back, so
+    // returning to the tab rebuilds too, if they were lost and nothing has
+    // rebuilt yet. Each rebuild costs one Mapbox map load, as a reload does.
+    rebuildAfterContextLoss: function(layer, config) {
+      var self = this,
+          glMap = layer.getMapboxMap ? layer.getMapboxMap() : layer._glMap,
+          lost = false;
+
+      if (!glMap || !glMap.on) { return; }
+
+      function rebuild() {
+        var fresh;
+        if (!lost || document.hidden) { return; }
+        lost = false;
+        document.removeEventListener('visibilitychange', onVisible);
+        self.map.removeLayer(layer);
+
+        // A phone short of graphics memory may refuse a new WebGL map too.
+        // Same way out as when the page first loads: plain tiles.
+        fresh = L.mapboxGL(config);
+        try {
+          fresh.addTo(self.map);
+        } catch (error) {
+          fresh._glMap = {remove: function () {}};
+          fresh.removeFrom(self.map);
+          if (config.fallback) {
+            L.tileLayer(config.fallback.url, config.fallback).addTo(self.map);
+          }
+          return;
+        }
+        self.rebuildAfterContextLoss(fresh, config);
+      }
+      function onVisible() {
+        if (!document.hidden) { setTimeout(rebuild, 1000); }
+      }
+
+      glMap.on('webglcontextlost', function() { lost = true; });
+      glMap.on('webglcontextrestored', rebuild);
+      document.addEventListener('visibilitychange', onVisible);
+    },
+
     render: function() {
       var self = this;
 

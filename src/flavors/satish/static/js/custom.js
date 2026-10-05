@@ -422,6 +422,38 @@
     return new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   };
 
+  // Like bsLabel, but to the day: "2 Kartik 2083". A date on the first of a
+  // month still reads "Kartik 2083", so every room that was given a month
+  // keeps the badge it always had; only the week answers, which land
+  // mid-month, gain a day.
+  KK.bsDayLabel = function(ts) {
+    var t = Number(ts);
+    if (!t || isNaN(t)) { return ''; }
+    for (var i = 0; i < KK.bsMonths.length; i++) {
+      var startTs = KK.bsTs(KK.bsMonths[i].ad);
+      if (startTs > t) { break; }
+      var next = KK.bsMonths[i + 1];
+      var endTs = next ? KK.bsTs(next.ad) : startTs + 32 * 86400000;
+      if (t < endTs) {
+        var day = Math.floor((t - startTs) / 86400000) + 1;
+        var month = KK.bsMonths[i].m + ' ' + KK.bsMonths[i].y;
+        return day === 1 ? month : day + ' ' + month;
+      }
+    }
+    return KK.bsLabel(t);
+  };
+
+  // Today's date IN NEPAL as 'YYYY-MM-DD', whatever the phone's own clock
+  // zone. "In 2 weeks" has to count from the day the student is living in.
+  KK.nepalToday = function(from) {
+    var d = new Date((from === undefined ? Date.now() : from) + KK.NPT_OFFSET_MS);
+    return d.toISOString().slice(0, 10);
+  };
+  KK.addDaysIso = function(iso, days) {
+    var p = String(iso).split('-');
+    return new Date(Date.UTC(+p[0], +p[1] - 1, +p[2] + days)).toISOString().slice(0, 10);
+  };
+
   // The next `count` Nepali months that have not started yet. `from` is
   // injectable so tests can pin the clock.
   KK.bsUpcoming = function(count, from) {
@@ -810,9 +842,9 @@
     // The month arriving flips the room green on its own.
     //
     // Deliberate, and Satish's call: the people who post these rooms are the
-    // final-year students about to leave them, so the month is not a
+    // final-year students about to leave them, so the date is not a
     // bystander's guess — it is stated by the person walking out the door,
-    // and anyone who does not know picks "Not sure yet" instead, which
+    // and anyone who does not know leaves the question unanswered, which
     // stores no timestamp and never expires.
     //
     // The known risk, accepted for now: nobody revisits the room after that
@@ -821,7 +853,7 @@
     // already taken — the alternative is to stop trusting the date once it
     // is stale rather than to distrust it from the start.
     if (ts <= now) { return { state: 'now', label: '' }; }
-    return { state: 'later', label: KK.bsLabel(ts) };
+    return { state: 'later', label: KK.bsDayLabel(ts) };
   };
 
   // ---- what to say when a required field is empty ------------------------
@@ -874,7 +906,7 @@
       var ts = Number(freeTs);
       if (ts && !isNaN(ts) && ts > (now || Date.now())) {
         return 'Only you can see this room. It appears on the map on ' +
-          KK.bsLabel(ts) + '.';
+          KK.bsDayLabel(ts) + '.';
       }
       // Marker set but the date has gone, or was never usable. The nightly
       // sweep releases these; say something true meanwhile rather than
@@ -2136,23 +2168,33 @@
   });
 
   // ---- "When will the room be free?" picker -------------------------------
-  // Three choices in one row: Free now / Not sure yet / Pick a month.
+  // Three choices in one row: Free now / In a few weeks / Pick a month.
   //
-  // "Not sure yet" is the DEFAULT, and it is a real answer rather than a
-  // failure to answer. The people who post rooms are the students about to
-  // leave them, and they genuinely do not know when they go: exam routines
-  // in Nepal are published a few weeks out and move, results take months,
-  // and health students stay on afterwards for the licence exam. Asking
-  // them to turn all that into a number was asking for a guess, and a guess
-  // on this field sends someone walking to a room that is already taken.
+  // Leaving the question UNANSWERED is the default, and it is a real answer
+  // rather than a failure to answer: it is stored as "ask". The people who
+  // post rooms are the students about to leave them, and many genuinely do
+  // not know when they go: exam routines in Nepal are published a few weeks
+  // out and move, results take months, and health students stay on for the
+  // licence exam. Forcing a date out of them would be asking for a guess,
+  // and a guess on this field sends someone walking to a room already taken.
+  //
+  // It used to be a button, "Not sure yet". That slot now holds "In a few
+  // weeks" (2026-10-05, the owner's call): most leavers DO know they go in
+  // days or weeks - after the last exam - and a whole month was too coarse
+  // for them. Tapping the active button again un-picks it, which is the way
+  // back to "not sure" now that it has no button of its own.
   //
   // The form stores three values: free_state (now | ask | date) which is
   // authoritative, free_from (YYYY-MM-DD) for humans, and free_ts (epoch
   // ms) for the map colour rules. free_ts is strictly numeric-or-empty —
-  // the state never rides inside it.
+  // the state never rides inside it. A week answer is stored as an ordinary
+  // date, so the API, its nightly unhide sweep and the pin colours need no
+  // change at all.
   KK.freeDate = {
+    WEEKS: [1, 2, 3],
+
     // Pure: what to store for a chosen answer. `choice` is 'now', 'ask',
-    // or one of the entries from KK.bsUpcoming().
+    // one of the entries from KK.bsUpcoming(), or { weeks: n, from: ms }.
     compute: function(choice) {
       if (choice === 'ask') {
         // No timestamp at all. There is nothing to flip, and a month
@@ -2161,6 +2203,13 @@
       }
       if (!choice || choice === 'now') {
         return { state: 'now', freeFrom: '', freeTs: '', label: '' };
+      }
+      if (choice.weeks) {
+        // An exact day, not "in 2 weeks": the badge has to stay true after
+        // the student who wrote it has gone. Counted from today in Nepal.
+        var iso = KK.addDaysIso(KK.nepalToday(choice.from), 7 * choice.weeks);
+        var ts = KK.bsTs(iso);
+        return { state: 'date', freeFrom: iso, freeTs: String(ts), label: KK.bsDayLabel(ts) };
       }
       return {
         state: 'date',
@@ -2172,18 +2221,18 @@
 
     // Pure: may "hide until free" be offered, and what should be stored.
     //
-    // Offered only in month mode with a month actually chosen. That is the
-    // whole guard against the one way this feature can hurt somebody: with
-    // "Not sure yet" there is no date, so a ticked box would take the room
-    // off the map with nothing that could ever bring it back. The poster
-    // would conclude the site lost their room and post it again, and we
-    // would have a duplicate and an angry landlord.
+    // Offered only once a real date exists: a month or a number of weeks
+    // actually chosen. That is the whole guard against the one way this
+    // feature can hurt somebody: with no date, a ticked box would take the
+    // room off the map with nothing that could ever bring it back. The
+    // poster would conclude the site lost their room and post it again, and
+    // we would have a duplicate and an angry landlord.
     //
-    // `value` is '' whenever the box is not offered, so switching from
-    // "Pick a month" to "Not sure yet" CLEARS a tick that was already made
-    // rather than leaving it stored under an answer it does not fit.
-    hideDecision: function(kind, hasMonth, ticked) {
-      var offered = (kind === 'date' && !!hasMonth);
+    // `value` is '' whenever the box is not offered, so un-picking the date
+    // CLEARS a tick that was already made rather than leaving it stored
+    // under an answer it does not fit.
+    hideDecision: function(kind, hasDate, ticked) {
+      var offered = ((kind === 'date' || kind === 'weeks') && !!hasDate);
       return { offered: offered, value: (offered && !!ticked) ? 'yes' : '' };
     }
   };
@@ -2228,13 +2277,15 @@
 
   function refreshFreePicker($picker) {
     var kind = $picker.find('.free-kind.is-active').data('kind') || 'ask';
-    var $months = $picker.find('.free-picker-months');
     var $date = $picker.find('.free-picker-date');
     var $preview = $picker.find('.free-picker-preview');
     var $note = $picker.find('.free-picker-note');
+    var askPreview = 'Students will see: <span class="free-badge free-badge-ask">Someone lives here now — call and ask</span>';
+
+    $picker.find('.free-picker-months').toggleClass('is-hidden', kind !== 'date');
+    $picker.find('.free-picker-weeks').toggleClass('is-hidden', kind !== 'weeks');
 
     if (kind === 'now') {
-      $months.addClass('is-hidden');
       $date.addClass('is-hidden');
       $note.addClass('is-hidden');
       writeFree($picker, KK.freeDate.compute('now'));
@@ -2244,42 +2295,46 @@
     }
 
     if (kind === 'ask') {
-      $months.addClass('is-hidden');
       $date.addClass('is-hidden');
       writeFree($picker, KK.freeDate.compute('ask'));
       writeHideUntilFree($picker, 'ask', '');
-      $preview.html('Students will see: <span class="free-badge free-badge-ask">Someone lives here now — call and ask</span>');
+      $preview.html(askPreview);
       // Says out loud that the room is still listed. Without this the
       // honest answer feels like the one that gets you nothing.
       $note.removeClass('is-hidden');
       return;
     }
 
-    renderMonthChips($picker);
-    $months.removeClass('is-hidden');
     $note.addClass('is-hidden');
+    var result = null;
+    if (kind === 'weeks') {
+      var $week = $picker.find('.free-week.is-active');
+      if ($week.length) { result = KK.freeDate.compute({ weeks: Number($week.data('weeks')) }); }
+    } else {
+      renderMonthChips($picker);
+      var months = $picker.find('.free-month-chips').data('months') || [];
+      var $month = $picker.find('.free-month.is-active');
+      if ($month.length) { result = KK.freeDate.compute(months[Number($month.data('i'))]); }
+    }
 
-    var months = $picker.find('.free-month-chips').data('months') || [];
-    var $active = $picker.find('.free-month.is-active');
-    if (!$active.length) {
-      // Month mode with nothing picked yet is not an answer, so hold the
-      // stored value at "ask" until they actually choose one.
+    if (!result) {
+      // Weeks or month mode with nothing picked yet is not an answer, so
+      // hold the stored value at "ask" until they actually choose. It is
+      // stored as "ask", so the box must not be offered here either - there
+      // is still no date for the room to come back on.
       $date.addClass('is-hidden');
       writeFree($picker, KK.freeDate.compute('ask'));
-      // Month mode with no month is stored as "ask", so the box must not be
-      // offered here either - there is still no date to come back on.
-      writeHideUntilFree($picker, 'date', '');
-      $preview.html('Students will see: <span class="free-badge free-badge-ask">Someone lives here now — call and ask</span>');
+      writeHideUntilFree($picker, kind, '');
+      $preview.html(askPreview);
       return;
     }
 
-    var chosen = months[Number($active.data('i'))];
-    var result = KK.freeDate.compute(chosen);
-    $date.removeClass('is-hidden').text('Free from the start of ' + result.label + '.');
+    $date.removeClass('is-hidden').text(kind === 'weeks' ?
+      'Free from ' + result.label + '.' : 'Free from the start of ' + result.label + '.');
     $preview.html('Students will see: <span class="free-badge free-badge-later">Free from ' +
       KK.esc(result.label) + '</span>');
     writeFree($picker, result);
-    writeHideUntilFree($picker, 'date', result.label);
+    writeHideUntilFree($picker, kind, result.label);
   }
 
   // ---- Claim button -------------------------------------------------------
@@ -2349,13 +2404,23 @@
 
   $(document).on('click', '.free-picker .free-kind', function() {
     var $picker = $(this).closest('.free-picker');
+    // Tapping the chosen answer again un-picks it. With no "Not sure yet"
+    // button any more, that is the way back to an unanswered question.
+    var unpick = $(this).hasClass('is-active');
+    var kind = unpick ? 'ask' : $(this).data('kind');
     $picker.find('.free-kind').removeClass('is-active');
+    if (!unpick) { $(this).addClass('is-active'); }
+    // Switching away from a row clears its choice, so a previous month or
+    // week cannot linger under a different answer.
+    if (kind !== 'date') { $picker.find('.free-month').removeClass('is-active'); }
+    if (kind !== 'weeks') { $picker.find('.free-week').removeClass('is-active'); }
+    refreshFreePicker($picker);
+  });
+
+  $(document).on('click', '.free-picker .free-week', function() {
+    var $picker = $(this).closest('.free-picker');
+    $picker.find('.free-week').removeClass('is-active');
     $(this).addClass('is-active');
-    // Switching away from the month row clears the month, so the previous
-    // choice cannot linger under a different answer.
-    if ($(this).data('kind') !== 'date') {
-      $picker.find('.free-month').removeClass('is-active');
-    }
     refreshFreePicker($picker);
   });
 

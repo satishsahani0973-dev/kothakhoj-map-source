@@ -35,14 +35,25 @@
             <p class="free-picker-label">{{#_}}When will the room be free?{{/_}}</p>
             <p class="free-picker-help">{{#_}}Don't know yet? That is fine. Leave it as it is.{{/_}}</p>
 
-            {{!-- "Not sure yet" ships pre-selected here AND as the value of
-                  the free_state input below, so the two agree with no
-                  JavaScript running on render. Nothing has to fire for the
-                  form to be correct. --}}
+            {{!-- Nothing is pre-selected: an unanswered question is stored as
+                  "ask" by the free_state input below, so the two agree with
+                  no JavaScript running on render. Nothing has to fire for
+                  the form to be correct. "In a few weeks" took the place of
+                  the old "Not sure yet" button (2026-10-05); tapping a
+                  chosen button again un-picks it. --}}
             <div class="free-picker-kind" role="group" aria-label="When will the room be free?">
               <button type="button" class="btn free-kind" data-kind="now">{{#_}}Free now{{/_}}</button>
-              <button type="button" class="btn free-kind is-active" data-kind="ask">{{#_}}Not sure yet{{/_}}</button>
+              <button type="button" class="btn free-kind" data-kind="weeks">{{#_}}In a few weeks{{/_}}</button>
               <button type="button" class="btn free-kind" data-kind="date">{{#_}}Pick a month{{/_}}</button>
+            </div>
+
+            <div class="free-picker-weeks is-hidden">
+              <p class="free-picker-months-label">{{#_}}How many weeks from today?{{/_}}</p>
+              <div class="free-week-chips">
+                <button type="button" class="btn free-week" data-weeks="1">{{#_}}1 week{{/_}}</button>
+                <button type="button" class="btn free-week" data-weeks="2">{{#_}}2 weeks{{/_}}</button>
+                <button type="button" class="btn free-week" data-weeks="3">{{#_}}3 weeks{{/_}}</button>
+              </div>
             </div>
 
             <div class="free-picker-months is-hidden">
@@ -56,8 +67,8 @@
             <p class="free-picker-preview" aria-live="polite">{{#_}}Students will see:{{/_}} <span class="free-badge free-badge-ask">{{#_}}Someone lives here now — call and ask{{/_}}</span></p>
             <p class="free-picker-note">{{#_}}Students will call and ask. Your room still shows on the map.{{/_}}</p>
 
-            {{!-- Offered ONLY once a month is chosen, and cleared the moment
-                  they leave month mode. With "Not sure yet" there is no date
+            {{!-- Offered ONLY once a month or a number of weeks is chosen, and
+                  cleared the moment that choice goes. With no answer there is no date
                   for the room to come back on, so a ticked box there would
                   hide it forever with nothing to release it - and the poster
                   would decide the site had eaten their room and post it

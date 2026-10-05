@@ -2421,6 +2421,7 @@
     var $picker = $(this).closest('.free-picker');
     $picker.find('.free-week').removeClass('is-active');
     $(this).addClass('is-active');
+    tickHideByDefault($picker);
     refreshFreePicker($picker);
   });
 
@@ -2454,14 +2455,28 @@
     document.addEventListener('change', clear, true);
   })();
 
+  // Choosing a date ticks "show my room only after it is free" for them
+  // (2026-10-05, the owner's call): most people who give a future date still
+  // sleep in that room, so hidden is the safe default. Once they have touched
+  // the box themselves, their choice stands - picking another week or month
+  // must not quietly tick it back.
+  function tickHideByDefault($picker) {
+    if (!$picker.data('hideTouched')) {
+      $picker.find('.free-hide-check').prop('checked', true);
+    }
+  }
+
   $(document).on('change', '.free-picker .free-hide-check', function() {
-    refreshFreePicker($(this).closest('.free-picker'));
+    var $picker = $(this).closest('.free-picker');
+    $picker.data('hideTouched', true);
+    refreshFreePicker($picker);
   });
 
   $(document).on('click', '.free-picker .free-month', function() {
     var $picker = $(this).closest('.free-picker');
     $picker.find('.free-month').removeClass('is-active');
     $(this).addClass('is-active');
+    tickHideByDefault($picker);
     refreshFreePicker($picker);
   });
 

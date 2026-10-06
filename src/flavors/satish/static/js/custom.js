@@ -512,7 +512,7 @@
   // use, and email is the fallback when a call or message goes unanswered.
   KK.report = {
     NUMBER: '9779704452372',
-    EMAIL: 'kothakhoj4@gmail.com',
+    EMAIL: 'nepalkothakhoj@gmail.com',
 
     // Pure: the message body, so it can be tested without a DOM.
     message: function(name, url) {

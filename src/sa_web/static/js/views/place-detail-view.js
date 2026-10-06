@@ -235,7 +235,7 @@ var Shareabouts = Shareabouts || {};
           if (response && response.status === 403) {
             S.Util.alert('This place can no longer be deleted from this browser, ' +
                   'because your session has changed. Please email ' +
-                  'kothakhoj4@gmail.com and we will remove it for you.');
+                  'nepalkothakhoj@gmail.com and we will remove it for you.');
           } else {
             S.Util.alert('Could not delete this place. Please try again.');
           }

@@ -660,8 +660,10 @@ var Shareabouts = Shareabouts || {};
 
       this.routingDest = destLatLng;
       var KKR = window.KothaKhoj && window.KothaKhoj.route;
+      var KKC = window.KothaKhoj && window.KothaKhoj.contact;
       var contact = placeModel && placeModel.get ? placeModel.get('contact_number') : null;
-      var waHref = (KKR && contact) ? KKR.waLink(contact) : null;
+      var waText = (KKC && placeModel) ? KKC.message(placeModel.id) : undefined;
+      var waHref = (KKR && contact) ? KKR.waLink(contact, waText) : null;
 
       var state = 'locating';
       var profile = 'walking';

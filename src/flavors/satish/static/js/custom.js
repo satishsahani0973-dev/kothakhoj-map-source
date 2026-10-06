@@ -1017,12 +1017,14 @@
     },
 
     // "9812345678" / "09812345678" / "+977 981-2345678" -> a wa.me link;
-    // null when there aren't enough digits to be a phone number.
-    waLink: function(contact) {
+    // null when there aren't enough digits to be a phone number. `text`, when
+    // given, is typed into the chat for the student, who can still change it.
+    waLink: function(contact, text) {
       var digits = String(contact == null ? '' : contact).replace(/[^0-9]/g, '');
       digits = digits.replace(/^0+/, '').replace(/^977/, '');
       if (digits.length < 9) { return null; }
-      return 'https://wa.me/977' + digits;
+      var link = 'https://wa.me/977' + digits;
+      return text ? link + '?text=' + encodeURIComponent(text) : link;
     },
 
     // Google's travel modes are not our profile names.
@@ -1072,6 +1074,21 @@
       return 'Contact';
     },
 
+    // Pure: what the WhatsApp button types for the student. It starts with
+    // where they found the room, so an owner - a hostel above all - can see
+    // and count what KothaKhoj sends them, and the link says which room is
+    // meant. One question, worded for a free room and an occupied one alike.
+    // A call cannot carry this, so calls stay uncounted.
+    message: function(id) {
+      var text = 'नमस्ते, मैले KothaKhoj मा तपाईंको कोठा देखेँ। ' +
+        'यो कोठा खाली छ, वा कहिले खाली हुन्छ?';
+      // Only a real id: Handlebars hands helpers an options object last.
+      var hasId = typeof id === 'number' ||
+        (typeof id === 'string' && id.trim() !== '');
+      if (!hasId) { return text; }
+      return text + '\nhttps://kothakhoj.com/place/' + encodeURIComponent(String(id).trim());
+    },
+
     // A dialable href, normalised the same way as the WhatsApp link so the
     // two buttons never disagree about which number they reach. Returns
     // null for anything too short to be a Nepali mobile, which is also what
@@ -1083,11 +1100,11 @@
       return 'tel:+977' + digits;
     },
 
-    blockHtml: function(number, role) {
+    blockHtml: function(number, role, id) {
       var num = String(number == null ? '' : number).trim();
       if (!num) { return ''; }
       var label = KK.contact.roleLabel(role);
-      var wa = KK.route.waLink(num);
+      var wa = KK.route.waLink(num, KK.contact.message(id));
       var tel = KK.contact.telHref(num);
       var html = '<div class="place-item kk-contact">' +
         '<span class="place-label">' + label + '</span>' +
@@ -1156,8 +1173,8 @@
       }
       return new window.Handlebars.SafeString(html);
     });
-    window.Handlebars.registerHelper('contact_block', function(number, role) {
-      return new window.Handlebars.SafeString(KK.contact.blockHtml(number, role));
+    window.Handlebars.registerHelper('contact_block', function(number, role, id) {
+      return new window.Handlebars.SafeString(KK.contact.blockHtml(number, role, id));
     });
     window.Handlebars.registerHelper('address_line', function(path, house) {
       // Handlebars appends its own options object, so a template that passes

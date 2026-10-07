@@ -169,6 +169,63 @@ body.signin-gate #list-container {
    belongs to the room's own page. */
 #list-container .place-directions-bar { display: none; }
 
+/* "List All Places" on phones. The core stylesheet hides .list-toggle-nav
+   below 60em and lets #list-container.is-exposed show only from 60em up
+   (default.css:1104 and 1529), so a phone could not open the list at all.
+   Here the button is a pill at the bottom right, opposite "+ Add a place";
+   the list covers the map under the header, and the same pill then reads
+   "Show the Map" to go back. */
+@media only screen and (max-width: 59.9375em) {
+  .list-toggle-nav {
+    display: block;
+    position: fixed;
+    right: 12px;
+    bottom: 3.2em;
+    z-index: 1100;
+  }
+  .list-toggle-btn,
+  .list-toggle-btn:link,
+  .list-toggle-btn:visited {
+    display: inline-block;
+    width: auto;
+    background: #fff;
+    color: #007fbf;
+    border-radius: 22px;
+    padding: 10px 17px;
+    font-size: 15px;
+    box-shadow: 0 2px 9px rgba(0, 0, 0, 0.35);
+  }
+  /* z-index stays the core 39: the pill lives inside #site-header, whose
+     z-index 40 makes it a layer of its own, so any list above 40 hides the
+     pill (measured). */
+  #list-container.is-exposed {
+    display: block;
+    position: fixed;
+    top: 3.5em; /* #site-header is 56px tall on phones */
+    padding-bottom: 6em; /* the list's last row clears the pill */
+  }
+  /* The core list lays each row out in desktop columns (16em of details on
+     the left, 5em kept free on the right), which leaves a 375px phone a
+     column a few letters wide. Stack them instead. */
+  .place-list .place-submission-details {
+    float: none;
+    width: auto;
+  }
+  .place-list .place-items {
+    margin-left: 0;
+    margin-right: 0;
+  }
+  /* "View on map" floats left; the report line starts under it, not beside. */
+  #list-container .kk-report {
+    clear: both;
+  }
+  /* A room's own panel and the first-visit gate own the screen. */
+  body.content-visible .list-toggle-nav,
+  body.signin-gate .list-toggle-nav {
+    display: none;
+  }
+}
+
 /* "Posting as <username>" chip at the top of the add-place form */
 .posting-as {
   background: #f1f3f4;

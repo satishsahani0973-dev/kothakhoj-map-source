@@ -5,7 +5,7 @@
 <a href="/{{ config.app.home_path }}">{{ config.app.name }}</a>
 {% endblock %}
 
-{% block page-title %}{% if place %}{{ place.properties.name|default:"Room for rent" }} — {{ config.app.title }}, Butwal{% else %}{{ config.app.title }} — Rooms and flats for rent in Butwal, Nepal{% endif %}{% endblock %}
+{% block page-title %}{% if place %}{{ place.properties.name|default:"Room for rent" }} — {{ config.app.title }}{% else %}{{ config.app.title }} — Rooms and flats for rent across Nepal{% endif %}{% endblock %}
 
 {% block meta %}
   {% if place %}
@@ -58,8 +58,6 @@
     },{% endif %}
     "address": {
       "@type": "PostalAddress",
-      "addressLocality": "Butwal",
-      "addressRegion": "Lumbini Province",
       "addressCountry": "NP"
     }
   }

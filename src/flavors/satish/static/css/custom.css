@@ -1211,6 +1211,46 @@ body.kk-directions .kk-legend { display: none; }
   text-decoration: underline;
 }
 
+/* The two consent boxes above Save (place-form.html). Big tap targets: the
+   whole row is the label, so a thumb anywhere on the sentence ticks it. */
+.kk-consent {
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+  margin: 14px 0 6px;
+  padding: 4px 12px;
+}
+/* #place-form in front: every form label here is small grey CAPITALS
+   (12px, #999), which is right for a field name and wrong for the one
+   sentence a poster is promising. Measured in the browser, not guessed. */
+#place-form .kk-consent-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  padding: 10px 0;
+  font-size: 15px;
+  font-weight: normal;
+  color: #222;
+  text-transform: none;
+  letter-spacing: normal;
+  line-height: 1.45;
+  cursor: pointer;
+}
+#place-form .kk-consent-item + .kk-consent-item {
+  border-top: 1px solid #eef2f6;
+}
+#place-form .kk-consent-item input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin: 1px 0 0;
+}
+#place-form .kk-consent-en {
+  display: block;
+  color: #555;
+  font-size: 13px;
+}
+
 /* Owner contact block on the place detail page */
 .kk-contact .kk-contact-number {
   font-size: 16px;

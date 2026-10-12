@@ -96,6 +96,32 @@
 
           {{> form-field-set form_config=place_config }}
 
+          {{!-- Two promises before a room goes up (2026-10-12). Privacy Act
+                2075 s12(4): another person's property details may not be
+                published without their consent, and a senior posting the
+                room they rent is publishing their landlord's. s33: an
+                under-18's details need a guardian's consent, and many +2
+                posters are 17. `required` makes the browser refuse to submit
+                (KK.validationMessage says why); the api refuses the same
+                room without both "yes" values (PlaceListView.missing_consent),
+                so this is not only a form rule. The names start with
+                "private" so the answers are kept with the room but never
+                shown publicly. Bump consent_version if the wording changes:
+                each room records which wording its poster agreed to. --}}
+          <fieldset class="kk-consent">
+            <label class="kk-consent-item">
+              <input type="checkbox" name="private-consent_owner" value="yes" required>
+              <span>म घरधनी हुँ, वा घरधनीले यो कोठा यहाँ राख्न अनुमति दिनुभएको छ।
+                <span class="kk-consent-en">I am the owner, or the owner agreed to me listing this room.</span></span>
+            </label>
+            <label class="kk-consent-item">
+              <input type="checkbox" name="private-consent_age" value="yes" required>
+              <span>म १८ वर्ष वा सोभन्दा माथिको हुँ।
+                <span class="kk-consent-en">I am 18 or older.</span></span>
+            </label>
+            <input type="hidden" name="private-consent_version" value="2026-10-12">
+          </fieldset>
+
           <p class="terms-consent" style="font-size: 12px; color: #666; margin: 8px 0;">
             {{#_}}By adding a place you agree to the{{/_}}
             <a href="/page/terms" rel="internal">{{#_}}Terms of Use{{/_}}</a>.

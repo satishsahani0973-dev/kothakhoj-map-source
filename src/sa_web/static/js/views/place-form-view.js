@@ -207,8 +207,15 @@ var Shareabouts = Shareabouts || {};
       // value they typed so they can fix it and press Save again.
       var status = (response && response.status) || 0;
       var expired = (status === 401 || status === 403);
+      // The api refuses a room without both consent ticks (2026-10-12). The
+      // form already requires them, so this mostly catches a page opened
+      // before the boxes existed - which is why it says to reload.
+      var body = (response && response.responseJSON) || {};
+      var noConsent = (status === 400 && body.missing && body.missing.length);
       var message = expired ?
         'Your sign-in has expired. Sign in again, then press Save — nothing you typed has been lost.' :
+        noConsent ?
+        'Tick both boxes above Save: that the owner agreed to this listing, and that you are 18 or older. If you cannot see the boxes, reload the page.' :
         'Could not save this room just now. Check your internet and press Save again — nothing you typed has been lost.';
       var $form = this.$('#place-form');
       if (!$form.length) { $form = this.$el; }

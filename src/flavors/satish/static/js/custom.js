@@ -884,6 +884,18 @@
       return 'Choose the room type - single room, double room or flat.';
     }
 
+    // The two consent boxes (place-form.html). Bilingual on purpose, like
+    // the boxes themselves: this is the one message that must be understood.
+    if (name === 'private-consent_owner' && validity.valueMissing) {
+      return 'घरधनीको अनुमति छ भने मात्र टिक गर्नुहोस्। ' +
+        'Tick this only if you are the owner or the owner agreed - ' +
+        'without it the room cannot be posted.';
+    }
+    if (name === 'private-consent_age' && validity.valueMissing) {
+      return 'कोठा राख्न १८ वर्ष पुगेको हुनुपर्छ। ' +
+        'You must be 18 or older to post a room.';
+    }
+
     // Anything else keeps the browser's own wording. A half-translated form
     // reads worse than a consistent one.
     return '';

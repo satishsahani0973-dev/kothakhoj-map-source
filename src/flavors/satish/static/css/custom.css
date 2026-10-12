@@ -1253,6 +1253,19 @@ body.kk-directions .kk-legend { display: none; }
   max-width: 140px;
 }
 
+/* "2 photos · Remove" (place-form-view.js renderPhotoStatus) on its own
+   line under the button: beside it, it ran off the edge of a phone. */
+#place-form .fileinput-name {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+  color: #444;
+}
+#place-form .kk-photos-clear {
+  margin-left: 6px;
+  text-decoration: underline;
+}
+
 /* One small consent line above Submit, like any app's "I agree" row: a
    normal-size box, one sentence, no panel. The whole row is the label, so a
    thumb anywhere on the sentence ticks it. */

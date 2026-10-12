@@ -8,6 +8,7 @@ var Shareabouts = Shareabouts || {};
     events: {
       'submit form': 'onSubmit',
       'change input[type="file"]': 'onInputFileChange',
+      'click .kk-photos-clear': 'onClearPhotos',
       'change [data-group-required]': 'onRequiredOptionButtonChange'
     },
     initialize: function(){
@@ -118,74 +119,168 @@ var Shareabouts = Shareabouts || {};
 
       return attrs;
     },
+    // ---- photos ----------------------------------------------------------
+    //
+    // Up to MAX_PHOTOS, ADDED one pick at a time. 2026-10-12: a poster picked
+    // two photos and only one was saved. Three things in the first version
+    // could each do that, so all three are fixed here:
+    //
+    //  * A second tap on "Add photos" REPLACED the first pick. People add
+    //    photos one at a time, so a new pick now adds to what is there, and
+    //    "Remove" (beside the count) is how to start over.
+    //  * Photos were shrunk all at once. Two full-size camera photos decoded
+    //    together is how a phone runs out of memory and drops one without a
+    //    word. They now go through a queue, one at a time.
+    //  * Pressing Submit while photos were still being shrunk saved only the
+    //    finished ones. Submit now waits ("Preparing photos...") and then
+    //    saves - see onSubmit.
+    //
+    // Each photo is its own attachment, named my_image, my_image-2, ... -
+    // attachments are matched by name, so distinct names are what keep them
+    // separate. A photo the phone cannot read never calls back at all, so
+    // each one has PHOTO_TIMEOUT_MS before it is counted as failed and the
+    // queue moves on; otherwise one bad file would hold Submit forever.
+    MAX_PHOTOS: 4,
+    PHOTO_TIMEOUT_MS: 20000,
+
+    photoNamesHeld: function(baseName) {
+      return this.model.attachmentCollection.filter(function(model) {
+        var n = model.get('name') || '';
+        return n === baseName || n.indexOf(baseName + '-') === 0;
+      });
+    },
+
+    freePhotoName: function(baseName) {
+      var held = _.map(this.photoNamesHeld(baseName), function(m) { return m.get('name'); });
+      for (var i = 1; i <= this.MAX_PHOTOS; i++) {
+        var name = i === 1 ? baseName : baseName + '-' + i;
+        if (!_.contains(held, name)) { return name; }
+      }
+      return null;
+    },
+
+    photosPending: function() {
+      return !!this._photoBusy || !!(this._photoQueue && this._photoQueue.length);
+    },
+
     onInputFileChange: function(evt) {
-      var self = this,
-          file,
-          attachment,
-          maxHeight,
-          maxWidth;
+      var input = evt.target;
+      if (!input.files || !input.files.length) { return; }
 
-      if(evt.target.files && evt.target.files.length) {
-        maxHeight = parseInt(evt.target.getAttribute("data-max-height"));
-        maxWidth = parseInt(evt.target.getAttribute("data-max-width"));
+      var baseName = $(input).attr('name'),
+          queue = this._photoQueue = this._photoQueue || [],
+          held = this.photoNamesHeld(baseName).length + queue.length + (this._photoBusy ? 1 : 0),
+          room = Math.max(0, this.MAX_PHOTOS - held),
+          files = Array.prototype.slice.call(input.files, 0, room),
+          maxHeight = parseInt(input.getAttribute("data-max-height")) || 800,
+          maxWidth = parseInt(input.getAttribute("data-max-width")) || 800;
 
-        // Up to MAX_PHOTOS from one picker (the field carries `multiple`,
-        // config.yml). Each photo becomes its own attachment, named
-        // my_image, my_image-2, my_image-3... - attachments are matched by
-        // name below, so distinct names are what make them separate photos
-        // rather than one photo replaced three times. A new pick replaces
-        // the whole earlier pick: the label shows one choice, so the form
-        // must hold exactly that choice and not leftovers from before.
-        var MAX_PHOTOS = 4,
-            baseName = $(evt.target).attr('name'),
-            files = Array.prototype.slice.call(evt.target.files, 0, MAX_PHOTOS),
-            stale = self.model.attachmentCollection.filter(function(model) {
-              var n = model.get('name') || '';
-              return n === baseName || n.indexOf(baseName + '-') === 0;
-            });
-        self.model.attachmentCollection.remove(stale);
-        // toBlob below is async. A slow phone can still be finishing an
-        // EARLIER pick when a new one arrives; its late callbacks must not
-        // put the replaced photos back, so each pick gets a number.
-        var pick = self._photoPick = (self._photoPick || 0) + 1;
+      this._photoBase = baseName;
+      this._photoOver = input.files.length > files.length;
+      _.each(files, function(file) {
+        queue.push({ file: file, baseName: baseName, maxWidth: maxWidth, maxHeight: maxHeight });
+      });
+      // Empty the picker: the photos now live in the queue and the
+      // attachment collection, and an emptied input fires `change` again
+      // even when the same photo is picked a second time.
+      try { input.value = ''; } catch (e) {}
 
-        this.$('.fileinput-name').text(files.length === 1 ? files[0].name :
-          files.length + ' photos' +
-          (evt.target.files.length > MAX_PHOTOS ? ' (the first ' + MAX_PHOTOS + ')' : ''));
+      this.renderPhotoStatus();
+      this.processNextPhoto();
+    },
 
-        _.each(files, function(file, i) {
-        S.Util.fileToCanvas(file, function(canvas) {
-          canvas.toBlob(function(blob) {
-            if (pick !== self._photoPick) { return; }
-            var fieldName = i === 0 ? baseName : baseName + '-' + (i + 1),
-                data = {
-                  name: fieldName,
-                  blob: blob,
-                  file: canvas.toDataURL('image/jpeg', S.JPEG_QUALITY)
-                };
+    processNextPhoto: function() {
+      var self = this;
+      if (self._photoBusy) { return; }
+      var job = (self._photoQueue || []).shift();
+      if (!job) {
+        self.renderPhotoStatus();
+        self.onPhotosReady();
+        return;
+      }
+      self._photoBusy = true;
+      self.renderPhotoStatus();
 
-            attachment = self.model.attachmentCollection.find(function(model) {
-              return model.get('name') === fieldName;
-            });
+      var finished = false, timer;
+      var done = function(data) {
+        if (finished) { return; }
+        finished = true;
+        clearTimeout(timer);
+        var name = data && self.freePhotoName(job.baseName);
+        if (name) {
+          data.name = name;
+          self.model.attachmentCollection.add(data);
+        } else if (!data) {
+          self._photoFailed = (self._photoFailed || 0) + 1;
+        }
+        self._photoBusy = false;
+        self.processNextPhoto();
+      };
+      timer = setTimeout(function() { done(null); }, self.PHOTO_TIMEOUT_MS);
 
-            if (_.isUndefined(attachment)) {
-              self.model.attachmentCollection.add(data);
-            } else {
-              attachment.set(data);
-            }
-            // toBlob with no quality argument uses the browser's default,
-            // which is 0.92 in every major browser. At the size this canvas
-            // has already been reduced to, 0.82 is not distinguishable by eye
-            // and is roughly a third fewer bytes - bytes the student pays to
-            // upload on mobile data, and every visitor pays to download.
-          }, 'image/jpeg', S.JPEG_QUALITY);
+      try {
+        S.Util.fileToCanvas(job.file, function(canvas) {
+          try {
+            canvas.toBlob(function(blob) {
+              if (!blob) { done(null); return; }
+              done({ blob: blob, file: canvas.toDataURL('image/jpeg', S.JPEG_QUALITY) });
+              // toBlob with no quality argument uses the browser's default,
+              // which is 0.92 in every major browser. At the size this canvas
+              // has already been reduced to, 0.82 is not distinguishable by
+              // eye and is roughly a third fewer bytes - bytes the student
+              // pays to upload on mobile data, and every visitor pays to
+              // download.
+            }, 'image/jpeg', S.JPEG_QUALITY);
+          } catch (e) { done(null); }
         }, {
-          maxWidth: maxWidth || 800,
-          maxHeight: maxHeight || 800,
+          maxWidth: job.maxWidth,
+          maxHeight: job.maxHeight,
           canvas: true
         });
-        });
+      } catch (e) { done(null); }
+    },
+
+    renderPhotoStatus: function() {
+      var $name = this.$('.fileinput-name');
+      if (!$name.length || !this._photoBase) { return; }
+      var count = this.photoNamesHeld(this._photoBase).length,
+          parts = [];
+      if (this.photosPending()) {
+        $name.text('Preparing photos…');
+        return;
       }
+      if (count) { parts.push(count === 1 ? '1 photo' : count + ' photos'); }
+      if (this._photoOver) { parts.push('up to ' + this.MAX_PHOTOS); }
+      if (this._photoFailed) {
+        parts.push(this._photoFailed === 1 ? '1 could not be read' :
+          this._photoFailed + ' could not be read');
+      }
+      $name.text(parts.join(' · '));
+      if (count) {
+        $name.append(' ').append(
+          $('<a href="#" class="kk-photos-clear"></a>').text('Remove'));
+      }
+    },
+
+    onClearPhotos: function(evt) {
+      if (evt) { evt.preventDefault(); }
+      var base = this._photoBase;
+      if (!base) { return; }
+      this._photoQueue = [];
+      this._photoOver = false;
+      this._photoFailed = 0;
+      this.model.attachmentCollection.remove(this.photoNamesHeld(base));
+      this.renderPhotoStatus();
+    },
+
+    // Called when the photo queue empties. If Submit was pressed while photos
+    // were still being prepared, this is where that save actually happens.
+    onPhotosReady: function() {
+      if (!this._submitWhenReady) { return; }
+      this._submitWhenReady = false;
+      this.$('[name="save-place-btn"]')
+        .val(this._submitLabel).removeAttr('disabled');
+      this.submitRoom();
     },
     updatedRequiredOptionButtons: function(optionButtons) {
       var groupNames = []
@@ -281,14 +376,29 @@ var Shareabouts = Shareabouts || {};
         return;
       }
 
+      if (evt) { evt.preventDefault(); }
+
+      // Photos still being shrunk would be left out of the save (2026-10-12:
+      // two picked, one saved). Wait for them, say so on the button, and
+      // save from onPhotosReady.
+      if (this.photosPending()) {
+        var $wait = this.$('[name="save-place-btn"]');
+        if (!this._submitWhenReady) { this._submitLabel = $wait.val(); }
+        this._submitWhenReady = true;
+        $wait.val('Preparing photos…').attr('disabled', 'disabled');
+        return;
+      }
+
+      this.submitRoom();
+    }),
+
+    submitRoom: function() {
       var router = this.options.router,
           model = this.model,
           // Should not include any files
           attrs = this.getAttrs(),
           $button = this.$('[name="save-place-btn"]'),
           spinner, $fileInputs;
-
-      evt.preventDefault();
 
       $button.attr('disabled', 'disabled');
       this.spinner = new Spinner(S.smallSpinnerOptions).spin(this.$('.form-spinner')[0]);
@@ -321,7 +431,7 @@ var Shareabouts = Shareabouts || {};
         complete: () => { this.onSaveComplete(model); },
         wait: true
       });
-    })
+    }
   });
 
 }(Shareabouts, jQuery, Shareabouts.Util.console));

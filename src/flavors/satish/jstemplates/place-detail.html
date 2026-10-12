@@ -18,6 +18,13 @@
                 when there is nothing to say - which is also why no empty-row
                 CSS is needed. --}}
           {{ address_line path house_number }}
+          {{!-- path/house_number came from an older form; rooms posted since
+                carry only `location`, the address worked out from the pin
+                (place config location_item_name). Without this fallback a
+                new room showed no address at all - and since 2026-10-12 the
+                form hides the address box, so this page right after Submit
+                is where a poster first sees it and can catch a wrong area. --}}
+          {{#unless path}}{{#if location}}<p class="place-address-line">{{ location }}</p>{{/if}}{{/unless}}
           {{!-- The posted-on stamp sits beside the availability badge, not
                 buried in the submitter sentence below. Every date on this
                 page is a prediction; this one is a fact, and near AMDA

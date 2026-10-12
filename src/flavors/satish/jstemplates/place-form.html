@@ -33,7 +33,7 @@
                 attention. --}}
           <div class="free-picker">
             <p class="free-picker-label">{{#_}}When will the room be free?{{/_}}</p>
-            <p class="free-picker-help">{{#_}}Don't know yet? That is fine. Leave it as it is.{{/_}}</p>
+            <p class="free-picker-help">{{#_}}Not sure yet? Skip it.{{/_}}</p>
 
             {{!-- Nothing is pre-selected: an unanswered question is stored as
                   "ask" by the free_state input below, so the two agree with
@@ -65,7 +65,6 @@
 
             <p class="free-picker-date is-hidden" aria-live="polite"></p>
             <p class="free-picker-preview" aria-live="polite">{{#_}}Students will see:{{/_}} <span class="free-badge free-badge-ask">{{#_}}Someone lives here now — call and ask{{/_}}</span></p>
-            <p class="free-picker-note">{{#_}}Students will call and ask. Your room still shows on the map.{{/_}}</p>
 
             {{!-- Offered ONLY once a month or a number of weeks is chosen, and
                   cleared the moment that choice goes. With no answer there is no date
@@ -96,36 +95,28 @@
 
           {{> form-field-set form_config=place_config }}
 
-          {{!-- Two promises before a room goes up (2026-10-12). Privacy Act
+          {{!-- One promise before a room goes up (2026-10-12): the poster is
+                18 or older, and the owner agreed to the listing. Privacy Act
                 2075 s12(4): another person's property details may not be
                 published without their consent, and a senior posting the
                 room they rent is publishing their landlord's. s33: an
                 under-18's details need a guardian's consent, and many +2
-                posters are 17. `required` makes the browser refuse to submit
-                (KK.validationMessage says why); the api refuses the same
-                room without both "yes" values (PlaceListView.missing_consent),
-                so this is not only a form rule. The names start with
-                "private" so the answers are kept with the room but never
-                shown publicly. Bump consent_version if the wording changes:
-                each room records which wording its poster agreed to. --}}
-          <fieldset class="kk-consent">
-            <label class="kk-consent-item">
-              <input type="checkbox" name="private-consent_owner" value="yes" required>
-              <span>म घरधनी हुँ, वा घरधनीले यो कोठा यहाँ राख्न अनुमति दिनुभएको छ।
-                <span class="kk-consent-en">I am the owner, or the owner agreed to me listing this room.</span></span>
-            </label>
-            <label class="kk-consent-item">
-              <input type="checkbox" name="private-consent_age" value="yes" required>
-              <span>म १८ वर्ष वा सोभन्दा माथिको हुँ।
-                <span class="kk-consent-en">I am 18 or older.</span></span>
-            </label>
-            <input type="hidden" name="private-consent_version" value="2026-10-12">
-          </fieldset>
-
-          <p class="terms-consent" style="font-size: 12px; color: #666; margin: 8px 0;">
-            {{#_}}By adding a place you agree to the{{/_}}
-            <a href="/page/terms" rel="internal">{{#_}}Terms of Use{{/_}}</a>.
-          </p>
+                posters are 17. One small line on purpose - it replaced a
+                two-box panel the owner found too big for a phone form.
+                `required` makes the browser refuse to submit
+                (KK.validationMessage says why, in Nepali and English); the
+                api refuses the same room without "yes"
+                (PlaceListView.missing_consent), so this is not only a form
+                rule. "private" names keep the answer with the room but out
+                of public output. Bump consent_version if the wording
+                changes: each room records which wording its poster agreed
+                to. --}}
+          <label class="kk-consent">
+            <input type="checkbox" name="private-consent" value="yes" required>
+            <span>{{#_}}I'm 18+ and the owner agreed to this listing.{{/_}}
+              <a href="/page/terms" rel="internal">{{#_}}Terms{{/_}}</a></span>
+          </label>
+          <input type="hidden" name="private-consent_version" value="2026-10-12">
 
           <input name="save-place-btn" id="save-place-btn" type="submit" value="{{ place_config.submit_button_label }}" class="btn btn-primary submit-btn">
 

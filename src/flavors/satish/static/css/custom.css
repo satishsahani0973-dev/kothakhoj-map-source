@@ -1211,44 +1211,78 @@ body.kk-directions .kk-legend { display: none; }
   text-decoration: underline;
 }
 
-/* The two consent boxes above Save (place-form.html). Big tap targets: the
-   whole row is the label, so a thumb anywhere on the sentence ticks it. */
-.kk-consent {
-  border: 1px solid #d9e2ec;
-  border-radius: 8px;
-  margin: 14px 0 6px;
-  padding: 4px 12px;
-}
-/* #place-form in front: every form label here is small grey CAPITALS
-   (12px, #999), which is right for a field name and wrong for the one
-   sentence a poster is promising. Measured in the browser, not guessed. */
-#place-form .kk-consent-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin: 0;
-  padding: 10px 0;
-  font-size: 15px;
-  font-weight: normal;
-  color: #222;
+/* The add-a-room form, made to read like an app form on a phone
+   (2026-10-12). Field names were the upstream default - 0.75em grey
+   CAPITALS (#999, default.css `label`) - fine as a caption, hard to read
+   outdoors. Scoped to .field-label so the room-type buttons and other
+   labels keep their own look. */
+#place-form label.field-label {
+  font-size: 14px;
+  font-weight: bold;
+  color: #333;
   text-transform: none;
   letter-spacing: normal;
-  line-height: 1.45;
+}
+#place-form label.field-label small {
+  font-weight: normal;
+  color: #888;
+}
+
+/* The address line on the form said "Set by the button above, or drag the
+   map." and nothing else: the address is worked out from the pin, and the
+   room page shows it after Submit. On the form it was a question nobody had
+   to answer, so it is hidden (2026-10-12). Only the display: the value comes
+   from PlaceFormView.location, not from this box, so nothing is lost. */
+#place-form .place-address-field {
+  display: none;
+}
+
+/* The last field ended in its own 24px margin plus the fieldset's 19px
+   padding, so 57px of white sat above the consent line - the gap read as
+   the end of the form. Measured in the browser. */
+#place-form fieldset {
+  padding-bottom: 0;
+}
+#place-form fieldset .field:last-child {
+  margin-bottom: 4px;
+}
+
+/* Rent is a 3-6 digit number: a full-width box made it look like the
+   biggest question on the form. */
+#place-form .place-rent-field input {
+  max-width: 140px;
+}
+
+/* One small consent line above Submit, like any app's "I agree" row: a
+   normal-size box, one sentence, no panel. The whole row is the label, so a
+   thumb anywhere on the sentence ticks it. */
+#place-form .kk-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 14px 0 10px;
+  font-size: 13px;
+  color: #444;
+  text-transform: none;
+  letter-spacing: normal;
+  line-height: 1.4;
   cursor: pointer;
 }
-#place-form .kk-consent-item + .kk-consent-item {
-  border-top: 1px solid #eef2f6;
-}
-#place-form .kk-consent-item input[type="checkbox"] {
+#place-form .kk-consent input[type="checkbox"] {
   flex: 0 0 auto;
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   margin: 1px 0 0;
 }
-#place-form .kk-consent-en {
+
+/* Submit: full width and a thumb's height (it was 36px tall and
+   content-wide). */
+#place-form .submit-btn {
   display: block;
-  color: #555;
-  font-size: 13px;
+  width: 100%;
+  min-height: 48px;
+  font-size: 16px;
+  border-radius: 8px;
 }
 
 /* Owner contact block on the place detail page */

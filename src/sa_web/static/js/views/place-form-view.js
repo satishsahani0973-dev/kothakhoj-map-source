@@ -126,14 +126,38 @@ var Shareabouts = Shareabouts || {};
           maxWidth;
 
       if(evt.target.files && evt.target.files.length) {
-        file = evt.target.files[0];
         maxHeight = parseInt(evt.target.getAttribute("data-max-height"));
         maxWidth = parseInt(evt.target.getAttribute("data-max-width"));
 
-        this.$('.fileinput-name').text(file.name);
+        // Up to MAX_PHOTOS from one picker (the field carries `multiple`,
+        // config.yml). Each photo becomes its own attachment, named
+        // my_image, my_image-2, my_image-3... - attachments are matched by
+        // name below, so distinct names are what make them separate photos
+        // rather than one photo replaced three times. A new pick replaces
+        // the whole earlier pick: the label shows one choice, so the form
+        // must hold exactly that choice and not leftovers from before.
+        var MAX_PHOTOS = 4,
+            baseName = $(evt.target).attr('name'),
+            files = Array.prototype.slice.call(evt.target.files, 0, MAX_PHOTOS),
+            stale = self.model.attachmentCollection.filter(function(model) {
+              var n = model.get('name') || '';
+              return n === baseName || n.indexOf(baseName + '-') === 0;
+            });
+        self.model.attachmentCollection.remove(stale);
+        // toBlob below is async. A slow phone can still be finishing an
+        // EARLIER pick when a new one arrives; its late callbacks must not
+        // put the replaced photos back, so each pick gets a number.
+        var pick = self._photoPick = (self._photoPick || 0) + 1;
+
+        this.$('.fileinput-name').text(files.length === 1 ? files[0].name :
+          files.length + ' photos' +
+          (evt.target.files.length > MAX_PHOTOS ? ' (the first ' + MAX_PHOTOS + ')' : ''));
+
+        _.each(files, function(file, i) {
         S.Util.fileToCanvas(file, function(canvas) {
           canvas.toBlob(function(blob) {
-            var fieldName = $(evt.target).attr('name'),
+            if (pick !== self._photoPick) { return; }
+            var fieldName = i === 0 ? baseName : baseName + '-' + (i + 1),
                 data = {
                   name: fieldName,
                   blob: blob,
@@ -159,6 +183,7 @@ var Shareabouts = Shareabouts || {};
           maxWidth: maxWidth || 800,
           maxHeight: maxHeight || 800,
           canvas: true
+        });
         });
       }
     },
@@ -215,7 +240,7 @@ var Shareabouts = Shareabouts || {};
       var message = expired ?
         'Your sign-in has expired. Sign in again, then press Save — nothing you typed has been lost.' :
         noConsent ?
-        'Tick both boxes above Save: that the owner agreed to this listing, and that you are 18 or older. If you cannot see the boxes, reload the page.' :
+        'Tick the box above Submit: that you are 18 or older and the owner agreed to this listing. If you cannot see it, reload the page.' :
         'Could not save this room just now. Check your internet and press Save again — nothing you typed has been lost.';
       var $form = this.$('#place-form');
       if (!$form.length) { $form = this.$el; }

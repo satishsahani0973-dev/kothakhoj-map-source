@@ -25,6 +25,33 @@
      data-place-name="{{#if name }}{{ name }}{{^}}Room for rent{{/if}}"
      href="#">{{#_}}Send the link to someone{{/_}}</a>
 
+  {{!-- A picture for Instagram, Facebook or WhatsApp Status, drawn on the
+        phone by KK.post in custom.js: a "Senior helper" badge with the
+        poster's name, and a QR code to this room. It names the nearest
+        college and never the address, phone number or exact spot.
+
+        The name is theirs to choose - filled from the account if there is
+        one, editable, and fine to leave empty. It goes on a public feed, so
+        it is never filled from anything the poster did not see here. --}}
+  <label class="kk-post-name-label">
+    {{#_}}Name on your post{{/_}}
+    <input type="text" class="kk-post-name" maxlength="30" autocomplete="name"
+           value="{{#if submitter.name }}{{ submitter.name }}{{/if}}"
+           placeholder="{{#_}}Your name (optional){{/_}}">
+  </label>
+  <a class="btn btn-block kk-posted-post"
+     data-place-id="{{ id }}"
+     data-free-state="{{ free_state }}"
+     data-free-ts="{{ free_ts }}"
+     data-hide="{{ hide_until_free }}"
+     data-visible="{{ visible }}"
+     data-type="{{ location_type }}"
+     data-rent="{{ rent }}"
+     data-lat="{{ geometry.coordinates.[1] }}"
+     data-lng="{{ geometry.coordinates.[0] }}"
+     href="#">{{#_}}Make a post for Instagram or Facebook{{/_}}</a>
+  <div class="kk-post-preview is-hidden"></div>
+
   {{!-- A house usually has more than one room. This opens a fresh form on
         the SAME pin with the owner's phone filled in, so the rooms show on
         the map as one house and the poster types only what differs. The

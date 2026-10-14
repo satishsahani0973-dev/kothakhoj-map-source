@@ -1833,6 +1833,51 @@ img.leaflet-marker-icon {
   border-radius: 8px;
   text-align: center;
 }
+/* "Make a post": the second action, so outlined rather than filled - the
+   link above is still what gets a room rung first. */
+.kk-posted .kk-posted-post,
+#content a.kk-posted-post {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  margin: 10px 0 0;
+  padding: 10px 14px;
+  background: #fff;
+  border: 2px solid #13253A;
+  color: #13253A;
+  font-size: 16px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  border-radius: 8px;
+  text-align: center;
+}
+.kk-post-name-label {
+  display: block;
+  margin: 12px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #3b3a37;
+}
+.kk-post-name-label .kk-post-name {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 4px;
+  padding: 10px 12px;
+  font-size: 16px; /* 16px stops iOS zooming the page on focus */
+  border: 1px solid #b9c4ce;
+  border-radius: 8px;
+}
+.kk-post-preview { margin: 10px 0 0; text-align: center; }
+.kk-post-preview.is-hidden { display: none; }
+.kk-post-preview img {
+  width: 60%;
+  max-width: 240px;
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(19, 37, 58, 0.25);
+}
 .kk-posted-note {
   margin: 10px 0 0;
   font-size: 12.5px;

@@ -667,6 +667,522 @@
     }
   });
 
+  // ---- QR codes, drawn here ------------------------------------------------
+  // Only for the room link on a "Make a post" picture. Byte mode, error
+  // correction level M, versions 1-10 - a room link is ~40 characters and
+  // fits in version 3. Written out rather than pulled in as a library: the
+  // site already carries jsQR for READING login cards, and the tests use it
+  // to read every code this makes, so a mistake here fails a test.
+  //
+  // The algorithm follows the QR standard (ISO/IEC 18004) as laid out in
+  // Project Nayuki's reference implementation: Reed-Solomon over GF(256)
+  // with polynomial 0x11D, block interleaving, function patterns, and the
+  // mask with the lowest penalty.
+  KK.qrMake = (function() {
+    // Level M, versions 1..10: error-correction codewords per block, blocks.
+    var ECC = [0, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26];
+    var BLOCKS = [0, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5];
+
+    function bit(x, i) { return ((x >>> i) & 1) !== 0; }
+    function gfMul(x, y) {
+      var z = 0;
+      for (var i = 7; i >= 0; i--) {
+        z = (z << 1) ^ ((z >>> 7) * 0x11D);
+        z ^= ((y >>> i) & 1) * x;
+      }
+      return z;
+    }
+    function rsDivisor(degree) {
+      var r = [];
+      for (var i = 0; i < degree - 1; i++) { r.push(0); }
+      r.push(1);
+      var root = 1;
+      for (i = 0; i < degree; i++) {
+        for (var j = 0; j < r.length; j++) {
+          r[j] = gfMul(r[j], root);
+          if (j + 1 < r.length) { r[j] ^= r[j + 1]; }
+        }
+        root = gfMul(root, 0x02);
+      }
+      return r;
+    }
+    function rsRemainder(data, div) {
+      var r = div.map(function() { return 0; });
+      data.forEach(function(b) {
+        var f = b ^ r.shift();
+        r.push(0);
+        div.forEach(function(c, i) { r[i] ^= gfMul(c, f); });
+      });
+      return r;
+    }
+    function rawModules(v) {
+      var n = (16 * v + 128) * v + 64;
+      if (v >= 2) {
+        var a = Math.floor(v / 7) + 2;
+        n -= (25 * a - 10) * a - 55;
+        if (v >= 7) { n -= 36; }
+      }
+      return n;
+    }
+    function dataCodewords(v) { return Math.floor(rawModules(v) / 8) - ECC[v] * BLOCKS[v]; }
+    function alignPositions(v, size) {
+      if (v === 1) { return []; }
+      var n = Math.floor(v / 7) + 2;
+      var step = Math.ceil((v * 4 + 4) / (n * 2 - 2)) * 2;
+      var r = [6];
+      for (var p = size - 7; r.length < n; p -= step) { r.splice(1, 0, p); }
+      return r;
+    }
+    function utf8(s) {
+      var e = unescape(encodeURIComponent(s)), out = [];
+      for (var i = 0; i < e.length; i++) { out.push(e.charCodeAt(i)); }
+      return out;
+    }
+
+    // text -> boolean[][] (true = dark), quiet zone not included.
+    function encode(text) {
+      var bytes = utf8(text), v, cap;
+      for (v = 1; v <= 10; v++) {
+        cap = dataCodewords(v) * 8;
+        if (4 + (v < 10 ? 8 : 16) + bytes.length * 8 <= cap) { break; }
+      }
+      if (v > 10) { throw new Error('QR: text too long'); }
+
+      // Data bits: byte mode, length, the bytes, terminator, pad.
+      var bits = [];
+      function put(val, len) { for (var i = len - 1; i >= 0; i--) { bits.push((val >>> i) & 1); } }
+      put(4, 4);
+      put(bytes.length, v < 10 ? 8 : 16);
+      bytes.forEach(function(b) { put(b, 8); });
+      put(0, Math.min(4, cap - bits.length));
+      put(0, (8 - bits.length % 8) % 8);
+      for (var pad = 0xEC; bits.length < cap; pad ^= 0xEC ^ 0x11) { put(pad, 8); }
+      var data = [];
+      for (var i = 0; i < bits.length; i += 8) {
+        var byte = 0;
+        for (var j = 0; j < 8; j++) { byte = (byte << 1) | bits[i + j]; }
+        data.push(byte);
+      }
+
+      // Split into blocks, add error correction, interleave.
+      var nb = BLOCKS[v], eccLen = ECC[v], raw = Math.floor(rawModules(v) / 8);
+      var nShort = nb - raw % nb, shortLen = Math.floor(raw / nb);
+      var div = rsDivisor(eccLen), blocks = [], k = 0;
+      for (i = 0; i < nb; i++) {
+        var dat = data.slice(k, k + shortLen - eccLen + (i < nShort ? 0 : 1));
+        k += dat.length;
+        var ecc = rsRemainder(dat, div);
+        if (i < nShort) { dat.push(0); }
+        blocks.push(dat.concat(ecc));
+      }
+      var all = [];
+      for (i = 0; i < blocks[0].length; i++) {
+        for (j = 0; j < blocks.length; j++) {
+          if (i !== shortLen - eccLen || j >= nShort) { all.push(blocks[j][i]); }
+        }
+      }
+
+      // Function patterns.
+      var size = v * 4 + 17, m = [], fn = [];
+      for (i = 0; i < size; i++) { m.push([]); fn.push([]); for (j = 0; j < size; j++) { m[i].push(false); fn[i].push(false); } }
+      function setFn(x, y, dark) { m[y][x] = dark; fn[y][x] = true; }
+      for (i = 0; i < size; i++) { setFn(6, i, i % 2 === 0); setFn(i, 6, i % 2 === 0); }
+      [[3, 3], [size - 4, 3], [3, size - 4]].forEach(function(c) {
+        for (var dy = -4; dy <= 4; dy++) {
+          for (var dx = -4; dx <= 4; dx++) {
+            var d = Math.max(Math.abs(dx), Math.abs(dy)), x = c[0] + dx, y = c[1] + dy;
+            if (x >= 0 && x < size && y >= 0 && y < size) { setFn(x, y, d !== 2 && d !== 4); }
+          }
+        }
+      });
+      var ap = alignPositions(v, size);
+      for (i = 0; i < ap.length; i++) {
+        for (j = 0; j < ap.length; j++) {
+          if ((i === 0 && j === 0) || (i === 0 && j === ap.length - 1) || (i === ap.length - 1 && j === 0)) { continue; }
+          for (var dy2 = -2; dy2 <= 2; dy2++) {
+            for (var dx2 = -2; dx2 <= 2; dx2++) {
+              setFn(ap[i] + dx2, ap[j] + dy2, Math.max(Math.abs(dx2), Math.abs(dy2)) !== 1);
+            }
+          }
+        }
+      }
+      function formatBits(mask) {
+        var d = (0 << 3) | mask, r = d; // level M is 00
+        for (var q = 0; q < 10; q++) { r = (r << 1) ^ ((r >>> 9) * 0x537); }
+        var b = ((d << 10) | r) ^ 0x5412;
+        for (q = 0; q <= 5; q++) { setFn(8, q, bit(b, q)); }
+        setFn(8, 7, bit(b, 6)); setFn(8, 8, bit(b, 7)); setFn(7, 8, bit(b, 8));
+        for (q = 9; q < 15; q++) { setFn(14 - q, 8, bit(b, q)); }
+        for (q = 0; q < 8; q++) { setFn(size - 1 - q, 8, bit(b, q)); }
+        for (q = 8; q < 15; q++) { setFn(8, size - 15 + q, bit(b, q)); }
+        setFn(8, size - 8, true);
+      }
+      formatBits(0);
+      if (v >= 7) {
+        var r7 = v;
+        for (i = 0; i < 12; i++) { r7 = (r7 << 1) ^ ((r7 >>> 11) * 0x1F25); }
+        var vb = (v << 12) | r7;
+        for (i = 0; i < 18; i++) {
+          var a = size - 11 + i % 3, b2 = Math.floor(i / 3);
+          setFn(a, b2, bit(vb, i)); setFn(b2, a, bit(vb, i));
+        }
+      }
+
+      // Codewords, zig-zag from the bottom right.
+      var n = 0;
+      for (var right = size - 1; right >= 1; right -= 2) {
+        if (right === 6) { right = 5; }
+        for (var vert = 0; vert < size; vert++) {
+          for (j = 0; j < 2; j++) {
+            var x = right - j, up = ((right + 1) & 2) === 0, y = up ? size - 1 - vert : vert;
+            if (!fn[y][x] && n < all.length * 8) { m[y][x] = bit(all[n >>> 3], 7 - (n & 7)); n++; }
+          }
+        }
+      }
+
+      // Try all eight masks; keep the one with the lowest penalty.
+      var MASK = [
+        function(x, y) { return (x + y) % 2 === 0; },
+        function(x, y) { return y % 2 === 0; },
+        function(x) { return x % 3 === 0; },
+        function(x, y) { return (x + y) % 3 === 0; },
+        function(x, y) { return (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0; },
+        function(x, y) { return x * y % 2 + x * y % 3 === 0; },
+        function(x, y) { return (x * y % 2 + x * y % 3) % 2 === 0; },
+        function(x, y) { return ((x + y) % 2 + x * y % 3) % 2 === 0; }
+      ];
+      function applyMask(k2) {
+        for (var yy = 0; yy < size; yy++) {
+          for (var xx = 0; xx < size; xx++) {
+            if (!fn[yy][xx] && MASK[k2](xx, yy)) { m[yy][xx] = !m[yy][xx]; }
+          }
+        }
+      }
+      function penalty() {
+        var p = 0, dark = 0, yy, xx, run, prev;
+        for (yy = 0; yy < size; yy++) {          // runs of five or more, rows
+          run = 0; prev = null;
+          for (xx = 0; xx < size; xx++) {
+            if (m[yy][xx] === prev) { run++; } else { if (run >= 5) { p += run - 2; } run = 1; prev = m[yy][xx]; }
+            if (m[yy][xx]) { dark++; }
+          }
+          if (run >= 5) { p += run - 2; }
+        }
+        for (xx = 0; xx < size; xx++) {          // and columns
+          run = 0; prev = null;
+          for (yy = 0; yy < size; yy++) {
+            if (m[yy][xx] === prev) { run++; } else { if (run >= 5) { p += run - 2; } run = 1; prev = m[yy][xx]; }
+          }
+          if (run >= 5) { p += run - 2; }
+        }
+        for (yy = 0; yy < size - 1; yy++) {      // 2x2 blocks of one colour
+          for (xx = 0; xx < size - 1; xx++) {
+            var c = m[yy][xx];
+            if (c === m[yy][xx + 1] && c === m[yy + 1][xx] && c === m[yy + 1][xx + 1]) { p += 3; }
+          }
+        }
+        var total = size * size;                 // dark/light balance
+        p += Math.floor(Math.abs(dark * 20 - total * 10) / total) * 10;
+        return p;
+      }
+      var best = 0, bestP = Infinity;
+      for (k = 0; k < 8; k++) {
+        applyMask(k); formatBits(k);
+        var pk = penalty();
+        if (pk < bestP) { bestP = pk; best = k; }
+        applyMask(k); // undo: masking is its own inverse
+      }
+      applyMask(best); formatBits(best);
+      return m;
+    }
+
+    return { encode: encode };
+  })();
+
+  // ---- "Make a post" ------------------------------------------------------
+  // A story-sized picture the poster can put on Instagram, Facebook or
+  // WhatsApp Status. A senior's own followers are mostly the students of the
+  // same college, so one post reaches exactly the juniors who need the room -
+  // and it comes from a classmate, not from us.
+  //
+  // Drawn in the browser on a canvas: nothing is uploaded and the server
+  // never sees it. It deliberately carries NO phone number, address, exact
+  // location or name - it is going on a public feed, and a room that is
+  // hidden until move-out day must stay hidden. The nearest college is the
+  // only place it names.
+  KK.post = {
+    W: 1080,
+    H: 1920,
+    NEAR_KM: 2,
+    TYPE: { single_room: 'Single room', double_room: 'Double room', flat: 'Flat' },
+    // Schools sit on the college sheet too, but "near Sainik Awasiya
+    // Mahavidyalaya" tells a college student less than the campus 300 m away.
+    NOT_HIGHER: /secondary school|boarding|high school|public school|mahavidyalaya|montessori/i,
+
+    // A name typed by the poster, made safe to print: no control
+    // characters, single spaces, at most 30 characters.
+    cleanName: function(name) {
+      var s = String(name == null ? '' : name).replace(/[\u0000-\u001f\u007f]/g, ' ')
+        .replace(/\s+/g, ' ').trim();
+      return s.length > 30 ? s.slice(0, 29).trim() + '…' : s;
+    },
+
+    // Pure: room fields -> the words on the picture. A room with a free-from
+    // date is a tenant leaving (weeks are stored as a date too, see
+    // KK.freeDate); anything else is read as an owner's room.
+    lines: function(o) {
+      o = o || {};
+      var leaving = o.freeState === 'date';
+      var name = KK.post.cleanName(o.name);
+      var rent = KK.rent.format(o.rent);
+      var url = String(o.url || '');
+      return {
+        leaving: leaving,
+        medal: leaving ? '🎓' : '🏠',
+        badge: (leaving ? 'SENIOR HELPER' : 'ROOM AVAILABLE') + (o.id ? '  ·  #' + o.id : ''),
+        name: leaving ? (name || 'A senior') : (name ? 'Posted by ' + name : ''),
+        head: leaving ? 'passed their room on to a junior' : 'Room khali chha',
+        headNp: leaving ? 'Junior lai room chhodnu bhayo' : 'Room available',
+        detail: [KK.post.TYPE[o.type], rent && rent + ' / month'].filter(Boolean).join('  ·  '),
+        near: o.college ? 'near ' + o.college : '',
+        free: leaving && o.freeLabel ? 'Free from ' + o.freeLabel : '',
+        url: url,
+        urlShort: url.replace(/^https?:\/\//, ''),
+        scan: o.scan || 'Scan to see the room',
+        quote: leaving ? 'राम्रो गर्नु, राम्रो हुन्छ' : '',
+        foot: 'Free  ·  No agent  ·  No commission'
+      };
+    },
+
+    // Pure: [{name, lat, lng}] -> the nearest one within NEAR_KM, or null.
+    // Colleges and campuses first; a school only when nothing else is near.
+    // Straight-line distance; good enough to say "near", never shown.
+    nearest: function(colleges, lat, lng, maxKm) {
+      lat = parseFloat(lat); lng = parseFloat(lng);
+      if (!isFinite(lat) || !isFinite(lng) || !colleges || !colleges.length) { return null; }
+      var R = 6371, rad = Math.PI / 180, limit = maxKm || KK.post.NEAR_KM;
+      function pick(list) {
+        var best = null, bestKm = limit;
+        list.forEach(function(c) {
+          var dLat = (c.lat - lat) * rad, dLng = (c.lng - lng) * rad;
+          var h = Math.pow(Math.sin(dLat / 2), 2) +
+            Math.cos(lat * rad) * Math.cos(c.lat * rad) * Math.pow(Math.sin(dLng / 2), 2);
+          var km = 2 * R * Math.asin(Math.sqrt(h));
+          if (km <= bestKm) { bestKm = km; best = c; }
+        });
+        return best;
+      }
+      return pick(colleges.filter(function(c) { return !KK.post.NOT_HIGHER.test(c.name); })) ||
+        pick(colleges);
+    },
+
+    nearestCollege: function(colleges, lat, lng, maxKm) {
+      var c = KK.post.nearest(colleges, lat, lng, maxKm);
+      return c ? c.name : '';
+    },
+
+    // Where the QR code goes. Normally the room itself. A room hidden until
+    // move-out day answers 404 to everyone but its poster - and the room page
+    // then says "already taken" (KK.deadLinkNotice) - so a QR to it would tell
+    // every junior who scans it the room is gone. Those posts point at the
+    // map around the nearest college instead, which is public anyway.
+    target: function(origin, id, hidden, college) {
+      if (!hidden) { return { url: origin + '/place/' + encodeURIComponent(id), scan: 'Scan to see the room' }; }
+      if (college) {
+        return { url: origin + '/16/' + college.lat.toFixed(5) + '/' + college.lng.toFixed(5),
+                 scan: 'Scan to see rooms near ' + college.name };
+      }
+      return { url: origin + '/', scan: 'Scan to find rooms near your college' };
+    },
+
+    // Breaks text into lines that fit `width` at the context's current font.
+    wrap: function(ctx, text, width) {
+      var words = String(text).split(' '), out = [], line = '';
+      words.forEach(function(w) {
+        var next = line ? line + ' ' + w : w;
+        if (line && ctx.measureText(next).width > width) { out.push(line); line = w; }
+        else { line = next; }
+      });
+      if (line) { out.push(line); }
+      return out;
+    },
+
+    draw: function(canvas, l) {
+      var W = KK.post.W, H = KK.post.H, ctx = canvas.getContext('2d');
+      var FONT = '"Helvetica Neue", Arial, sans-serif';
+      var cx = W / 2;
+      canvas.width = W; canvas.height = H;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+
+      ctx.fillStyle = '#13253A';
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#E8833A';
+      ctx.fillRect(0, H - 24, W, 24);
+
+      // Brand row: the room pin and the name, small.
+      ctx.save();
+      ctx.translate(cx - 150, 92);
+      ctx.scale(0.5, 0.5);
+      var g = ctx.createLinearGradient(0, 0, 0, 140);
+      g.addColorStop(0, '#5AA8F0'); g.addColorStop(1, '#1F6FC0');
+      ctx.fillStyle = g;
+      ctx.fill(new window.Path2D('M50 136 C31 104 6 82 6 49 A44 44 0 1 1 94 49 C94 82 69 104 50 136 Z'));
+      ctx.beginPath(); ctx.arc(50, 48, 17, 0, Math.PI * 2);
+      ctx.fillStyle = '#FDFDFB'; ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = '#FDFDFB';
+      ctx.font = '700 54px ' + FONT;
+      ctx.textAlign = 'left';
+      ctx.fillText('KothaKhoj', cx - 92, 148);
+      ctx.textAlign = 'center';
+
+      // The medal.
+      ctx.beginPath(); ctx.arc(cx, 330, 104, 0, Math.PI * 2);
+      ctx.fillStyle = '#E8833A'; ctx.fill();
+      ctx.beginPath(); ctx.arc(cx, 330, 120, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(232,131,58,0.45)'; ctx.lineWidth = 6; ctx.stroke();
+      ctx.font = '110px ' + FONT;
+      ctx.fillText(l.medal, cx, 368);
+
+      // The badge line.
+      ctx.font = '700 38px ' + FONT;
+      var bw = ctx.measureText(l.badge).width + 80;
+      ctx.fillStyle = 'rgba(232,131,58,0.16)';
+      ctx.beginPath();
+      if (ctx.roundRect) { ctx.roundRect(cx - bw / 2, 482, bw, 70, 35); } else { ctx.rect(cx - bw / 2, 482, bw, 70); }
+      ctx.fill();
+      ctx.fillStyle = '#E8833A';
+      ctx.fillText(l.badge, cx, 531);
+
+      // The name, as big as it will fit.
+      var y = 680;
+      if (l.name) {
+        var size = 96;
+        do { ctx.font = '700 ' + size + 'px ' + FONT; size -= 4; }
+        while (ctx.measureText(l.name).width > 940 && size > 52);
+        ctx.fillStyle = '#FDFDFB';
+        ctx.fillText(l.name, cx, y);
+        y += 70;
+      }
+      ctx.fillStyle = '#C9D6E3';
+      ctx.font = '400 44px ' + FONT;
+      ctx.fillText(l.head, cx, y);
+      ctx.font = '400 38px ' + FONT;
+      ctx.fillStyle = '#A9BCCF';
+      ctx.fillText(l.headNp, cx, y + 54);
+      y += 110;
+
+      // The room.
+      var rows = [];
+      if (l.detail) { rows.push(['700 50px ', '#FDFDFB', l.detail]); }
+      if (l.near) { rows.push(['700 42px ', '#E8833A', l.near]); }
+      if (l.free) { rows.push(['600 38px ', '#C9D6E3', l.free]); }
+      if (rows.length) {
+        var boxH = rows.length * 64 + 40;
+        ctx.fillStyle = 'rgba(255,255,255,0.08)';
+        ctx.beginPath();
+        if (ctx.roundRect) { ctx.roundRect(90, y, W - 180, boxH, 32); } else { ctx.rect(90, y, W - 180, boxH); }
+        ctx.fill();
+        var ry = y + 70;
+        rows.forEach(function(r) {
+          ctx.font = r[0] + FONT; ctx.fillStyle = r[1];
+          ctx.fillText(KK.post.wrap(ctx, r[2], 860)[0], cx, ry);
+          ry += 64;
+        });
+        y += boxH;
+      }
+
+      // The QR code to this exact room, on a white tile.
+      if (l.url) {
+        var m = KK.qrMake.encode(l.url), n = m.length;
+        var tile = 400, top = Math.max(y + 50, 1040), q = Math.floor((tile - 40) / (n + 8));
+        var qs = q * (n + 8), ox = cx - qs / 2, oy = top + (tile - qs) / 2;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.beginPath();
+        if (ctx.roundRect) { ctx.roundRect(cx - tile / 2, top, tile, tile, 28); } else { ctx.rect(cx - tile / 2, top, tile, tile); }
+        ctx.fill();
+        ctx.fillStyle = '#13253A';
+        for (var yy = 0; yy < n; yy++) {
+          for (var xx = 0; xx < n; xx++) {
+            if (m[yy][xx]) { ctx.fillRect(ox + (xx + 4) * q, oy + (yy + 4) * q, q, q); }
+          }
+        }
+        ctx.fillStyle = '#FDFDFB';
+        var fs = 40;  // a long college name shrinks the line rather than losing its end
+        do { ctx.font = '700 ' + fs + 'px ' + FONT; fs -= 2; }
+        while (ctx.measureText(l.scan).width > 960 && fs > 26);
+        ctx.fillText(l.scan, cx, top + tile + 66);
+        ctx.fillStyle = '#5AA8F0';
+        ctx.font = '600 36px ' + FONT;
+        ctx.fillText(l.urlShort, cx, top + tile + 116);
+        y = top + tile + 116;
+      }
+
+      // Below whatever came last, never on top of it: a senior's box has
+      // three rows and pushes the QR code down.
+      y = Math.max(y + 90, 1690);
+      if (l.quote) {
+        ctx.fillStyle = '#E8833A';
+        ctx.font = '600 46px ' + FONT;
+        ctx.fillText(l.quote, cx, y);
+        y += 80;
+      }
+      ctx.fillStyle = '#A9BCCF';
+      ctx.font = '600 34px ' + FONT;
+      ctx.fillText(l.foot, cx, Math.max(y, 1800));
+      return canvas;
+    },
+
+    // A data URL -> Blob, synchronously. toBlob() is async, and a share sheet
+    // opened after an await can lose the tap that allowed it.
+    blobFromDataUrl: function(dataUrl) {
+      var parts = dataUrl.split(','), bin = window.atob(parts[1]);
+      var bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) { bytes[i] = bin.charCodeAt(i); }
+      return new window.Blob([bytes], { type: 'image/png' });
+    }
+  };
+
+  $(document).on('click', '.kk-posted-post', function(e) {
+    e.preventDefault();
+    var $b = $(this);
+    var id = $b.data('place-id');
+    var hidden = !!$b.data('hide') || String($b.data('visible')) === 'false';
+    var college = KK.post.nearest(KK.colleges.list, $b.data('lat'), $b.data('lng'));
+    var t = KK.post.target(window.location.origin, id, hidden, college);
+    var url = t.url;
+    var l = KK.post.lines({
+      freeState: $b.data('free-state'),
+      type: $b.data('type'),
+      rent: String($b.data('rent') || ''),
+      id: id,
+      url: url,
+      scan: t.scan,
+      name: $b.closest('.kk-posted').find('.kk-post-name').val(),
+      freeLabel: KK.bsDayLabel($b.data('free-ts')),
+      college: college ? college.name : ''
+    });
+    var canvas = KK.post.draw(document.createElement('canvas'), l);
+    var dataUrl = canvas.toDataURL('image/png');
+
+    // Show it first, so the poster sees what they are about to share.
+    var $preview = $b.siblings('.kk-post-preview');
+    $preview.html('<img alt="Your post" src="' + dataUrl + '">').removeClass('is-hidden');
+
+    var name = 'kothakhoj-post.png';
+    var file = null;
+    try { file = new window.File([KK.post.blobFromDataUrl(dataUrl)], name, { type: 'image/png' }); } catch (err) {}
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file], text: 'Room on KothaKhoj: ' + url }).catch(function() {});
+    } else {
+      // No share sheet that takes pictures (most laptops): save it instead.
+      var a = document.createElement('a');
+      a.href = dataUrl; a.download = name;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    }
+  });
+
   // ---- Room photos --------------------------------------------------------
   // The swiping itself is CSS scroll-snap and needs nothing from here. This
   // only adds the counter and the dots, and only when there is more than one
@@ -2700,7 +3216,8 @@
       fetchSheet.done(function(text) {
         var colleges = KK.colleges.parseCsv(text);
         // Kept for the room list's "Nearest to" sort, which may already be
-        // open and waiting for it.
+        // open and waiting for it, and for "Make a post", which names the
+        // nearest one.
         KK.colleges.list = colleges;
         $(document).trigger('kk:colleges', [colleges]);
         if (colleges.length) { addCollegeLayer(map, colleges); }

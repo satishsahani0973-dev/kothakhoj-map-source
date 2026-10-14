@@ -1,0 +1,60 @@
+{{!-- The room list's header: one search box, filter chips, a count, and a
+      sort. Replaces the core template, whose only tools were a text box that
+      could not find "single room" and sorts by survey and support counts.
+      The logic lives in custom.js (KK.list) and place-list-view.js. Chips are
+      buttons, not links: they change the list, they do not go anywhere.
+      The rent values must match KK.list.RENT_STEPS (a test checks). --}}
+<div class="place-list-header kk-list-header">
+  <form class="list-search-form" role="search">
+    <input id="list-search" name="list_search" type="search" autocomplete="off"
+           placeholder="{{#_}}Search rooms, area, college{{/_}}">
+  </form>
+
+  <div class="kk-list-filters">
+    <div class="kk-chip-row" role="group" aria-label="{{#_}}Room type{{/_}}">
+      <span class="kk-chip-label">{{#_}}Room type{{/_}}</span>
+      <button type="button" class="kk-chip is-selected" data-filter="type" data-value="">{{#_}}All{{/_}}</button>
+      <button type="button" class="kk-chip" data-filter="type" data-value="single_room">{{#_}}Single{{/_}}</button>
+      <button type="button" class="kk-chip" data-filter="type" data-value="double_room">{{#_}}Double{{/_}}</button>
+      <button type="button" class="kk-chip" data-filter="type" data-value="flat">{{#_}}Flat{{/_}}</button>
+    </div>
+    <div class="kk-chip-row" role="group" aria-label="{{#_}}Kitchen{{/_}}">
+      <span class="kk-chip-label">{{#_}}Kitchen{{/_}}</span>
+      <button type="button" class="kk-chip is-selected" data-filter="kitchen" data-value="">{{#_}}Any{{/_}}</button>
+      <button type="button" class="kk-chip" data-filter="kitchen" data-value="own">{{#_}}Own kitchen{{/_}}</button>
+      <button type="button" class="kk-chip" data-filter="kitchen" data-value="shared">{{#_}}Shared{{/_}}</button>
+    </div>
+    <div class="kk-chip-row" role="group" aria-label="{{#_}}Rent per month{{/_}}">
+      <span class="kk-chip-label">{{#_}}Rent per month{{/_}}</span>
+      <button type="button" class="kk-chip is-selected" data-filter="rentMax" data-value="">{{#_}}Any{{/_}}</button>
+      <button type="button" class="kk-chip" data-filter="rentMax" data-value="4000">{{#_}}Under 4,000{{/_}}</button>
+      <button type="button" class="kk-chip" data-filter="rentMax" data-value="6000">{{#_}}Under 6,000{{/_}}</button>
+      <button type="button" class="kk-chip" data-filter="rentMax" data-value="9000">{{#_}}Under 9,000{{/_}}</button>
+    </div>
+    <div class="kk-chip-row">
+      <button type="button" class="kk-chip kk-chip-toggle" data-filter="freeNow" data-value="1" aria-pressed="false">{{#_}}Free now{{/_}}</button>
+    </div>
+  </div>
+
+  <div class="kk-list-bar">
+    <p class="kk-list-count" aria-live="polite"></p>
+    <a href="#" class="kk-list-clear" hidden>{{#_}}Clear{{/_}}</a>
+    <label class="kk-list-sort">
+      <span>{{#_}}Sort{{/_}}</span>
+      <select id="kk-list-sort">
+        <option value="date">{{#_}}Newest{{/_}}</option>
+        <option value="cheapest">{{#_}}Cheapest{{/_}}</option>
+        <option value="nearest">{{#_}}Nearest to a college{{/_}}</option>
+      </select>
+    </label>
+    <label class="kk-list-college" hidden>
+      <span>{{#_}}College{{/_}}</span>
+      <select id="kk-list-college">
+        <option value="">{{#_}}Choose a college{{/_}}</option>
+      </select>
+    </label>
+  </div>
+</div>
+
+<ul class="place-list unstyled-list"></ul>
+<p class="kk-list-empty" hidden>{{#_}}No rooms match. Try fewer filters.{{/_}}</p>

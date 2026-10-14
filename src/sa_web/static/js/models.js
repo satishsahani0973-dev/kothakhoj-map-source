@@ -187,9 +187,15 @@ var Shareabouts = Shareabouts || {};
           attrs = args.attrs;
       options = args.options;
 
+      // deferAttachments: the caller uploads the photos itself, after the
+      // save, with uploadPhotos - so it can wait for them, show progress and
+      // retry. Without it, photos go up in the background as they always did.
+      //
       // If this is a new model, then we need to save it first before we can
       // attach anything to it.
-      if (this.isNew()) {
+      if (options.deferAttachments) {
+        // nothing here: see uploadPhotos
+      } else if (this.isNew()) {
         realSuccessHandler = options.success || $.noop;
 
         // Attach files after the model is succesfully saved
@@ -211,6 +217,43 @@ var Shareabouts = Shareabouts || {};
         if (attachment.isNew()) {
           attachment.save();
         }
+      });
+    },
+
+    // Upload this place's unsent photos ONE AT A TIME, each tried up to three
+    // times, and resolve with the names that still failed ([] = all sent).
+    //
+    // saveAttachments above sends every photo at once and never looks at the
+    // answer: on a weak connection a photo could fail and simply be gone,
+    // with the room shown without it and nobody told (found 2026-10-13).
+    // One at a time is also kinder to a phone on mobile data.
+    UPLOAD_TRIES: 3,
+    uploadPhotos: function(onProgress) {
+      var self = this,
+          pending = this.attachmentCollection.filter(function(a) { return a.isNew(); }),
+          failed = [], i = 0;
+      return new Promise(function(resolve) {
+        function next() {
+          if (i >= pending.length) { resolve(failed); return; }
+          var attachment = pending[i], tries = 0;
+          if (onProgress) { onProgress(i + 1, pending.length); }
+          (function attempt() {
+            tries++;
+            attachment.save(null, {
+              success: function() { i++; next(); },
+              error: function() {
+                if (tries < self.UPLOAD_TRIES) {
+                  setTimeout(attempt, tries * 1500);
+                } else {
+                  failed.push(attachment.get('name'));
+                  i++;
+                  next();
+                }
+              }
+            });
+          }());
+        }
+        next();
       });
     },
 

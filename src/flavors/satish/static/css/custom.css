@@ -1968,3 +1968,393 @@ img.leaflet-marker-icon {
    from a screen where the student never opened it, and would stack five of
    these buttons on one screen. The block belongs to the room's own page. */
 #list-container .kk-claim { display: none; }
+
+/* ==== The room list, room cards, house sheet and add-rooms form =========
+   Built 2026-10-13 and polished the same day to one consistent look: system
+   font, one ink colour and one muted grey, hairline borders, 12px corners,
+   generous tap targets. Everything below shares these tokens, so a change of
+   accent or radius is one line. Only these new parts use them; the rest of
+   the site keeps its own styles. */
+:root {
+  --kk-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --kk-ink: #0f172a;
+  --kk-ink-2: #334155;
+  --kk-muted: #64748b;
+  --kk-line: #e2e8f0;
+  --kk-soft: #f1f5f9;
+  --kk-wash: #f8fafc;
+  --kk-accent: #2654d2;
+  --kk-accent-soft: #eef2ff;
+  --kk-now: #2654d2;     /* the legend's three colours */
+  --kk-later: #e1264d;
+  --kk-ask: #8a1538;
+  --kk-radius: 12px;
+}
+
+/* ---- List header: search, filters, count, sort ------------------------- */
+.kk-list-header { padding: 16px 16px 8px; font-family: var(--kk-font); }
+.kk-list-header .list-search-form input {
+  float: none;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  height: 46px;
+  padding: 0 14px 0 42px;
+  font: 16px var(--kk-font); /* 16px, or iOS zooms the page on focus */
+  color: var(--kk-ink);
+  background: var(--kk-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='8' cy='8' r='6'/%3E%3Cpath d='m13 13 4 4'/%3E%3C/svg%3E") no-repeat 14px 50%;
+  border: 1px solid transparent;
+  border-radius: var(--kk-radius);
+  box-sizing: border-box;
+  transition: background-color .15s, border-color .15s, box-shadow .15s;
+}
+.kk-list-header .list-search-form input:focus {
+  outline: none;
+  background-color: #fff;
+  border-color: var(--kk-accent);
+  box-shadow: 0 0 0 3px var(--kk-accent-soft);
+}
+.kk-list-filters { margin-top: 6px; }
+.kk-chip-label {
+  display: block;
+  white-space: normal;
+  margin: 12px 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  color: var(--kk-muted);
+}
+/* One line per row, scrolled sideways on a narrow phone, so the filters
+   stay short and the first room is still on the first screen. */
+.kk-chip-row {
+  margin: 0;
+  white-space: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.kk-chip-row::-webkit-scrollbar { display: none; }
+.kk-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 34px;
+  margin: 0 6px 6px 0;
+  padding: 0 14px;
+  border: 1px solid var(--kk-line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--kk-ink-2);
+  font: 500 14px/1 var(--kk-font);
+  cursor: pointer;
+  transition: background-color .15s, color .15s, border-color .15s;
+}
+.kk-chip:hover { border-color: #cbd5e1; }
+.kk-chip.is-selected { background: var(--kk-ink); border-color: var(--kk-ink); color: #fff; }
+.kk-chip:focus-visible { outline: 2px solid var(--kk-accent); outline-offset: 2px; }
+.kk-chip-toggle { margin-top: 6px; }
+.kk-list-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin: 10px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--kk-line);
+  font: 14px var(--kk-font);
+}
+.kk-list-count { margin: 0; color: var(--kk-ink); font-weight: 600; }
+.kk-list-clear { color: var(--kk-accent); font-weight: 500; text-decoration: none; }
+.kk-list-sort, .kk-list-college { margin: 0 0 0 auto; display: inline-flex; align-items: center; gap: 6px; color: var(--kk-muted); font-size: 13px; text-transform: none; }
+.kk-list-college { margin-left: 0; }
+.kk-list-sort select, .kk-list-college select {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 34px;
+  max-width: 220px;
+  padding: 0 30px 0 12px;
+  border: 1px solid var(--kk-line);
+  border-radius: 999px;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='m3 4.5 3 3 3-3'/%3E%3C/svg%3E") no-repeat right 12px center;
+  color: var(--kk-ink);
+  font: 500 13px var(--kk-font);
+}
+.kk-list-empty { padding: 28px 16px; color: var(--kk-muted); text-align: center; font: 14px var(--kk-font); }
+/* [hidden] loses to any display rule, so say it outright. */
+.kk-list-header [hidden], .kk-list-empty[hidden] { display: none !important; }
+
+/* ---- Room cards ----------------------------------------------------------
+   place-list-item.html: the list, the house sheet and "Other rooms in this
+   house" all draw a room this way. The whole card is one link. */
+.place-list > li { padding: 0; border: 0; }
+.kk-card {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--kk-line);
+  color: inherit;
+  text-decoration: none;
+  font-family: var(--kk-font);
+  transition: background-color .12s;
+}
+.kk-card:hover { background: var(--kk-wash); }
+.kk-card:active { background: var(--kk-soft); }
+.kk-card:focus-visible { outline: 2px solid var(--kk-accent); outline-offset: -2px; }
+.kk-card-photo {
+  flex: none;
+  width: 96px;
+  height: 96px;
+  border-radius: var(--kk-radius);
+  overflow: hidden;
+  background: var(--kk-soft);
+}
+.kk-card-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.kk-card-nophoto {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' fill='none' stroke='%2394a3b8' stroke-width='1.6' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='22' height='18' rx='3'/%3E%3Ccircle cx='10' cy='11' r='2'/%3E%3Cpath d='m4 21 6-6 4 4 3-3 7 7'/%3E%3C/svg%3E") no-repeat center;
+}
+.kk-card-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.kk-card-rent { line-height: 1.2; }
+.kk-card-rent-amount { font-size: 18px; font-weight: 700; color: var(--kk-ink); letter-spacing: -.01em; }
+.kk-card-rent-period, .kk-card-rent-none { font-size: 13px; color: var(--kk-muted); }
+/* Type and kitchen read as one quiet line, "Single Room · Own kitchen". */
+.kk-card .place-type-chip { background: none; padding: 0; border-radius: 0; font-size: 13.5px; font-weight: 500; color: var(--kk-ink-2); }
+.kk-card .kk-kitchen-chip { margin-left: 0; }
+.kk-card .kk-kitchen-chip::before { content: "· "; color: var(--kk-muted); }
+/* Availability: a coloured dot and words, not a filled pill. */
+.kk-card .free-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  background: none;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.kk-card .free-badge::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+.kk-card .free-badge-now { color: var(--kk-now); }
+.kk-card .free-badge-later { color: var(--kk-later); }
+.kk-card .free-badge-ask { color: var(--kk-ask); }
+.kk-card-where, .kk-card-distance {
+  font-size: 13px;
+  color: var(--kk-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kk-card-distance { color: var(--kk-ink-2); font-weight: 500; }
+.kk-card-distance:empty { display: none; }
+.kk-card-hidden { font-size: 12px; font-weight: 600; color: #b45309; }
+.kk-kitchen-chip { margin-left: 2px; }
+
+/* ---- House pin: several rooms on one pin ---------------------------------
+   The normal pin image (KK.house.icon picks it, same colours as the legend)
+   with the number of rooms on a small badge at its top right. No house shape
+   and no price, by the owner's choice: the map looks the same, only counted.
+   Two classes, because leaflet.css sets the marker box after this file. */
+.leaflet-marker-icon.kk-house-pin { background: none; border: 0; cursor: pointer; }
+.kk-house-pin-img { display: block; width: 100%; height: 100%; }
+.kk-house-count {
+  position: absolute;
+  top: -4px;
+  right: 2px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: 10px;
+  background: var(--kk-ink);
+  border: 2px solid #fff;
+  color: #fff;
+  font: 700 12px/16px var(--kk-font);
+  text-align: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+.kk-house-count-dot { top: 0; right: 0; }
+
+/* ---- House sheet: the rooms in one house ---------------------------------
+   Appended to <body>, like the dialogs, so nothing on the page can stack
+   over it. A bottom sheet on a phone (with the grab handle phones teach
+   everyone to read), a centred card on a wide screen. */
+.kk-house-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: kk-fade .15s ease-out;
+}
+.kk-house-sheet {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  max-height: 82vh;
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 20px 20px 0 0;
+  padding: 8px 0 16px;
+  box-shadow: 0 -8px 30px rgba(15, 23, 42, 0.18);
+  font-family: var(--kk-font);
+  animation: kk-rise .2s ease-out;
+}
+.kk-house-sheet::before {
+  content: "";
+  display: block;
+  width: 36px;
+  height: 4px;
+  margin: 0 auto 12px;
+  border-radius: 2px;
+  background: #cbd5e1;
+}
+@media (min-width: 700px) {
+  .kk-house-backdrop { align-items: center; }
+  .kk-house-sheet { border-radius: 20px; }
+  .kk-house-sheet::before { display: none; }
+}
+@keyframes kk-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes kk-rise { from { transform: translateY(24px); opacity: .6; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .kk-house-backdrop, .kk-house-sheet { animation: none; } }
+.kk-house-title { margin: 0 56px 2px 16px; font-size: 18px; font-weight: 700; color: var(--kk-ink); }
+.kk-house-where { margin: 0 16px 8px; font-size: 13px; color: var(--kk-muted); }
+.kk-house-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--kk-soft);
+  color: var(--kk-ink-2);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.kk-house-list .kk-card:last-child { border-bottom: 0; }
+
+/* ---- "Other rooms in this house", at the end of a room's page ----------- */
+.kk-house-others { margin: 20px -16px 0; padding-top: 16px; border-top: 1px solid var(--kk-line); }
+.kk-house-others-title { margin: 0 16px 4px; font: 700 16px var(--kk-font); color: var(--kk-ink); }
+.kk-house-others[hidden] { display: none; }
+
+/* The post-submit button that starts the next room in the same house. */
+.kk-posted-house {
+  margin-top: 8px;
+  border: 1px solid var(--kk-accent);
+  border-radius: var(--kk-radius);
+  background: #fff;
+  color: var(--kk-accent);
+  font-weight: 600;
+}
+
+/* ---- Several rooms from one form ------------------------------------------
+   The rooms already added, above the room fields, and the button that adds
+   one. Each row: its number, its summary (tap to edit), how many identical
+   rooms it stands for, and a cross to remove it. */
+.kk-rooms-added {
+  margin: 6px 0 14px;
+  padding: 12px;
+  border-radius: var(--kk-radius);
+  background: var(--kk-wash);
+  border: 1px solid var(--kk-line);
+  font-family: var(--kk-font);
+}
+.kk-rooms-added[hidden] { display: none; }
+.kk-rooms-added-title { margin: 0 0 8px; font-weight: 700; font-size: 14px; color: var(--kk-ink); }
+.kk-rooms-list { margin: 0; padding: 0; list-style: none; }
+/* Two lines on a phone: number and summary across the full width, then the
+   counter and the cross underneath - so the summary is not squeezed into a
+   narrow column beside them. */
+.kk-room-added {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 10px;
+  padding: 10px;
+  margin: 0 0 8px;
+  border: 1px solid var(--kk-line);
+  border-radius: var(--kk-radius);
+  background: #fff;
+}
+.kk-room-num {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--kk-accent-soft);
+  color: var(--kk-accent);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 24px;
+  text-align: center;
+}
+.kk-room-edit {
+  flex: 1 1 calc(100% - 40px);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--kk-font);
+}
+.kk-room-text { font-size: 13.5px; line-height: 1.35; color: var(--kk-ink); }
+.kk-room-edit-hint { font-size: 11.5px; color: var(--kk-muted); }
+.kk-room-count {
+  flex: none;
+  margin-left: 34px;
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  border: 1px solid var(--kk-line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.kk-room-less, .kk-room-more {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  background: #fff;
+  color: var(--kk-ink);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+.kk-room-less:disabled, .kk-room-more:disabled { color: #cbd5e1; cursor: default; }
+.kk-room-n { min-width: 30px; font-size: 12.5px; font-weight: 700; color: var(--kk-ink); text-align: center; }
+.kk-room-remove {
+  flex: none;
+  margin-left: auto;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--kk-soft);
+  color: #b42318;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.kk-rooms-next { margin: 4px 0 0; font-size: 13px; color: var(--kk-muted); }
+.kk-add-room {
+  display: block;
+  width: 100%;
+  height: 48px;
+  margin: 12px 0 16px;
+  border: 1.5px dashed rgba(38, 84, 210, 0.45);
+  border-radius: var(--kk-radius);
+  background: var(--kk-accent-soft);
+  color: var(--kk-accent);
+  font: 600 15px var(--kk-font);
+  text-transform: none;
+  cursor: pointer;
+  transition: background-color .15s, border-color .15s;
+}
+.kk-add-room:hover { background: #e0e7ff; border-color: var(--kk-accent); }

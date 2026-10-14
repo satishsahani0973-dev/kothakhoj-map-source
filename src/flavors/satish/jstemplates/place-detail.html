@@ -41,7 +41,7 @@
                 nowhere. Prints nothing at all for rooms posted before the
                 field existed - see KK.rent. --}}
           {{ rent_line rent }}
-          <p class="place-availability">{{ free_badge free_ts free_state }} <span class="place-type-chip">{{ place_type_label location_type }}</span> <span class="place-posted">{{#_}}Posted{{/_}} {{ fromnow created_datetime }}</span></p>
+          <p class="place-availability">{{ free_badge free_ts free_state }} <span class="place-type-chip">{{ place_type_label location_type }}</span> {{ kitchen_chip kitchen }} <span class="place-posted">{{#_}}Posted{{/_}} {{ fromnow created_datetime }}</span></p>
           <a href="#" class="btn btn-small share-place"
              data-place-id="{{ id }}"
              data-place-name="{{#if name }}{{ name }}{{^}}Room for rent{{/if}}">{{#_}}Share{{/_}}</a>
@@ -127,8 +127,9 @@
                 every field in config and renders the ones NOT named here, so a
                 new config field prints itself as a generic label/value row
                 unless it is added to this list. rent is named because it is
-                drawn properly above, beside the availability badge. --}}
-          {{#each_place_item "submitter_name" "name" "path" "house_number" "location_type" "stay_duration" "contact_number" "contact_role" "rent"}}
+                drawn properly above, beside the availability badge, and so
+                is kitchen, as a chip beside the room type. --}}
+          {{#each_place_item "submitter_name" "name" "path" "house_number" "location_type" "stay_duration" "contact_number" "contact_role" "rent" "kitchen"}}
           <div class="place-item place-item-{{ name }}">
             <span class="place-label place-label-{{ name }}">{{ label }}</span>
             <p class="place-value place-value-{{ name }}">{{nlToBr value }}</p>
@@ -177,6 +178,13 @@
           {{!-- Grievance route required by the e-commerce listing rules, put
                 where a complaint actually starts: on the room itself. --}}
           {{ report_block id name }}
+
+          {{!-- Filled in by place-detail-view.js with the other rooms saved
+                on this room's exact pin, as list cards. Stays hidden for a
+                room that is alone in its house - which is most rooms. Last
+                on the page: it is a "you might also look at", not part of
+                this room. --}}
+          <section class="kk-house-others" hidden></section>
         </section>
 
         {{#if survey_config}}

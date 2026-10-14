@@ -811,6 +811,530 @@
     }
   };
 
+  // ---- Kitchen ------------------------------------------------------------
+  // Own / shared / none, asked on the form since 2026-10-13. Rooms posted
+  // before have no value, and print nothing rather than a guess.
+  KK.kitchen = {
+    LABELS: { own: 'Own kitchen', shared: 'Shared kitchen', none: 'No kitchen' },
+    label: function(value) {
+      return KK.kitchen.LABELS[value] || '';
+    }
+  };
+
+  // ---- Room list: search, filters, sort ------------------------------------
+  // The list used to have one text box that looked for the typed letters
+  // inside each room's STORED values. The room type is stored as
+  // "single_room", so "single room" - with the space everybody types -
+  // found nothing; and the part meant to search the readable names never
+  // ran at all (place-list-view.js tested a function for truthiness). Its
+  // sort buttons were the original app's "most surveyed"/"most supported",
+  // which mean nothing for rooms.
+  //
+  // Everything here is pure, so the node tests can drive it without a list.
+  KK.list = {
+    // The rent chips. Upper bounds, inclusive: "Under 6,000" keeps a room
+    // at exactly 6,000, which is how a student reads a budget.
+    RENT_STEPS: [4000, 6000, 9000],
+
+    TYPE_LABELS: { single_room: 'Single room', double_room: 'Double room', flat: 'Flat' },
+
+    // A few words people actually type for each value, Nepali included, so
+    // the box finds a room by what it is and not only by how it is stored.
+    ALIASES: {
+      single_room: 'single singal सिंगल',
+      double_room: 'double dabal डबल',
+      flat: 'flat फ्ल्याट',
+      own: 'kitchen भान्सा',
+      shared: 'kitchen भान्सा'
+    },
+
+    // Lower case, "_" and "-" read as spaces, runs of space collapsed - so
+    // "Single_Room", "single-room" and "single  room" are the same words.
+    normalize: function(s) {
+      return String(s == null ? '' : s).toLowerCase()
+        .replace(/[_\-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    },
+
+    // Everything a search should be able to find a room by, in one string.
+    searchText: function(attrs) {
+      var a = attrs || {}, L = KK.list;
+      var submitter = a.submitter || {};
+      var parts = [
+        a.name, a.location, a.path, a.house_number, a.description,
+        a.location_type, L.TYPE_LABELS[a.location_type], L.ALIASES[a.location_type],
+        // Not the "No kitchen" label: someone typing "kitchen" wants one,
+        // and the label's own word would hand them every room without.
+        a.kitchen === 'none' ? '' : KK.kitchen.label(a.kitchen), L.ALIASES[a.kitchen],
+        a.rent, submitter.username, submitter.name, a.submitter_name
+      ];
+      return L.normalize(parts.filter(function(p) {
+        return typeof p === 'string' || typeof p === 'number';
+      }).join(' '));
+    },
+
+    // Every typed word must appear somewhere, in any order: "kitchen single"
+    // finds a single room with a kitchen. An empty box matches everything.
+    matchesTerm: function(attrs, term) {
+      var words = KK.list.normalize(term).split(' ').filter(Boolean);
+      if (!words.length) { return true; }
+      var text = KK.list.searchText(attrs);
+      return words.every(function(w) { return text.indexOf(w) !== -1; });
+    },
+
+    // state: { type, kitchen, rentMax, freeNow }. Empty values mean "any".
+    // A room that never answered a question drops out as soon as that
+    // question is filtered on - it cannot be shown as matching what it
+    // never said.
+    matches: function(attrs, state, now) {
+      var a = attrs || {}, s = state || {};
+      if (s.type && a.location_type !== s.type) { return false; }
+      if (s.kitchen && a.kitchen !== s.kitchen) { return false; }
+      if (s.rentMax) {
+        var rent = KK.rent.parse(a.rent);
+        if (rent === null || rent > s.rentMax) { return false; }
+      }
+      if (s.freeNow) {
+        var free = KK.availability(a.free_ts, now, a.free_state);
+        if (free.state !== 'now') { return false; }
+      }
+      return true;
+    },
+
+    isFiltered: function(state, term) {
+      var s = state || {};
+      return !!(s.type || s.kitchen || s.rentMax || s.freeNow ||
+                KK.list.normalize(term));
+    },
+
+    // "350 m" / "1.2 km", for a card in a list sorted by distance.
+    distanceText: function(m) {
+      if (!isFinite(m)) { return ''; }
+      if (m < 950) { return (Math.round(m / 10) * 10) + ' m'; }
+      return (m / 1000).toFixed(1) + ' km';
+    },
+
+    countText: function(shown, total) {
+      if (shown === total) { return total === 1 ? '1 room' : total + ' rooms'; }
+      return shown + ' of ' + total + (total === 1 ? ' room' : ' rooms');
+    },
+
+    // Straight-line metres between two points (haversine). Good to a few
+    // metres across one town, which is all a "nearest" sort needs.
+    distanceM: function(lat1, lng1, lat2, lng2) {
+      var R = 6371000, rad = Math.PI / 180;
+      var dLat = (lat2 - lat1) * rad, dLng = (lng2 - lng1) * rad;
+      var h = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(lat1 * rad) * Math.cos(lat2 * rad) *
+              Math.sin(dLng / 2) * Math.sin(dLng / 2);
+      return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+    },
+
+    // A room's [lat, lng] from its GeoJSON point, or null.
+    latLng: function(attrs) {
+      var c = attrs && attrs.geometry && attrs.geometry.coordinates;
+      if (!c || c.length < 2) { return null; }
+      var lng = Number(c[0]), lat = Number(c[1]);
+      return (isFinite(lat) && isFinite(lng)) ? [lat, lng] : null;
+    },
+
+    // Comparator for two rooms' attributes. Newest first by default. Rooms
+    // with no rent (or no position) go to the END of a rent (or distance)
+    // sort, not the start: an unknown is not a cheap room or a near one.
+    // Ties fall back to newest, so the order never jumps between renders.
+    compare: function(sortBy, a, b, origin) {
+      var L = KK.list;
+      function newest() {
+        var ta = String(a.created_datetime || ''), tb = String(b.created_datetime || '');
+        return ta === tb ? 0 : (ta > tb ? -1 : 1);
+      }
+      function byNumber(x, y) {
+        if (x === null && y === null) { return newest(); }
+        if (x === null) { return 1; }
+        if (y === null) { return -1; }
+        return x === y ? newest() : x - y;
+      }
+      if (sortBy === 'cheapest') {
+        return byNumber(KK.rent.parse(a.rent), KK.rent.parse(b.rent));
+      }
+      if (sortBy === 'nearest' && origin) {
+        var pa = L.latLng(a), pb = L.latLng(b);
+        return byNumber(pa ? L.distanceM(origin.lat, origin.lng, pa[0], pa[1]) : null,
+                        pb ? L.distanceM(origin.lat, origin.lng, pb[0], pb[1]) : null);
+      }
+      return newest();
+    }
+  };
+
+  // ---- Houses: several rooms at one pin -----------------------------------
+  // One house often has several rooms, and their pins land on top of each
+  // other. The map used to merge them into a plain numbered circle that, at
+  // full zoom, fanned out into a ring of small pins a student had to tap one
+  // by one. Now a house is one pin ("3 rooms · from 4.5k") that opens a list
+  // of its rooms, the way a hotel lists its room types (2026-10-13).
+  //
+  // "Same house" means the SAME PIN. Rooms are put into a house by giving
+  // them identical coordinates - "Add another room in this house" copies the
+  // first room's, and "Is this the same house?" snaps to the other room's -
+  // so no new field is needed, and old rooms posted at exactly one spot
+  // join up on their own. Rooms a few metres apart stay separate houses: two
+  // houses can genuinely be that close in Butwal's lanes.
+  KK.house = {
+    NEAR_M: 15,    // ask "same house?" when a new pin is this close to a room
+    FOLLOW_M: 30,  // "Add another room": still that house if nudged this far
+
+    // Rounded to 7 decimals (about 1 cm), so the same stored numbers always
+    // agree and float noise never splits a house.
+    key: function(attrs) {
+      var p = KK.list.latLng(attrs);
+      return p ? p[0].toFixed(7) + ',' + p[1].toFixed(7) : null;
+    },
+
+    isOneHouse: function(list) {
+      if (!list || list.length < 2) { return false; }
+      var k = KK.house.key(list[0]);
+      if (!k) { return false; }
+      return list.every(function(a) { return KK.house.key(a) === k; });
+    },
+
+    // The other rooms in this room's house, newest first.
+    siblings: function(attrs, list) {
+      var k = KK.house.key(attrs);
+      if (!k) { return []; }
+      return (list || []).filter(function(a) {
+        return a !== attrs && a.id !== attrs.id && KK.house.key(a) === k;
+      }).sort(function(a, b) { return KK.list.compare('date', a, b); });
+    },
+
+    // now beats later beats ask: a house with ONE free room is worth the
+    // walk, so its pin says so. Rooms with no answer at all count as ask.
+    stateOf: function(attrs, now) {
+      var s = KK.availability(attrs.free_ts, now, attrs.free_state).state;
+      return (s === 'now' || s === 'later') ? s : 'ask';
+    },
+
+    summary: function(list, now) {
+      var rank = { now: 0, later: 1, ask: 2 }, best = 'ask', min = null;
+      (list || []).forEach(function(a) {
+        var s = KK.house.stateOf(a, now);
+        if (rank[s] < rank[best]) { best = s; }
+        var r = KK.rent.parse(a.rent);
+        if (r !== null && (min === null || r < min)) { min = r; }
+      });
+      return { count: (list || []).length, minRent: min, state: best };
+    },
+
+    // A house is drawn as the NORMAL pin - the same teardrop (or dot, when
+    // zoomed out) and the same legend colour a single room gets - with the
+    // number of rooms on a small badge. No house shape and no price: the
+    // owner wanted the map to look the same, only counted (2026-10-13).
+    COLOURS: { now: '2654d2', later: 'e1264d', ask: '8a1538' },
+
+    // The pin a house uses at this zoom: the config's own marker images.
+    icon: function(state, zoom) {
+      var colour = KK.house.COLOURS[state] || KK.house.COLOURS.ask;
+      var big = Number(zoom) >= 16;
+      return {
+        url: '/static/css/images/markers/' + (big ? 'pin-' : 'dot-') + colour + '.svg',
+        size: big ? [44, 49] : [44, 44],
+        anchor: big ? [22, 45] : [22, 22],
+        big: big
+      };
+    },
+
+    pinHtml: function(summary, zoom) {
+      var icon = KK.house.icon(summary.state, zoom);
+      return '<img class="kk-house-pin-img" src="' + icon.url + '" alt="">' +
+        '<span class="kk-house-count' + (icon.big ? '' : ' kk-house-count-dot') + '">' +
+        KK.esc(String(summary.count)) + '</span>';
+    },
+
+    // The nearest room within maxM metres that is NOT already at this exact
+    // spot (those are in the house already), or null.
+    nearby: function(here, list, maxM) {
+      var hereKey = here.lat.toFixed(7) + ',' + here.lng.toFixed(7), best = null;
+      (list || []).forEach(function(a) {
+        var p = KK.list.latLng(a);
+        if (!p || KK.house.key(a) === hereKey) { return; }
+        var m = KK.list.distanceM(here.lat, here.lng, p[0], p[1]);
+        if (m <= maxM && (!best || m < best.m)) { best = { attrs: a, m: m, lat: p[0], lng: p[1] }; }
+      });
+      return best;
+    },
+
+    // "Single room · Rs 4,500, Golpark" - how the question names a room.
+    describe: function(attrs) {
+      var parts = [KK.list.TYPE_LABELS[attrs.location_type] || 'Room'];
+      var rent = KK.rent.format(attrs.rent);
+      if (rent) { parts.push(rent); }
+      var where = attrs.location || attrs.name;
+      return parts.join(' · ') + (where ? ', ' + where : '');
+    },
+
+    // Where the new room's pin should be saved, or null to keep it as is.
+    //   pending: the house "Add another room in this house" came from.
+    //   rooms:   every room already on the map (attributes).
+    // Resolves after asking, when it has to ask.
+    decide: function(here, pending, rooms) {
+      if (pending && KK.list.distanceM(here.lat, here.lng, pending.lat, pending.lng) <= KK.house.FOLLOW_M) {
+        return Promise.resolve({ lat: pending.lat, lng: pending.lng });
+      }
+      var near = KK.house.nearby(here, rooms, KK.house.NEAR_M);
+      if (!near) { return Promise.resolve(null); }
+      return KK.confirm({
+        title: 'Same house?',
+        body: 'There is already a room ' + Math.round(near.m) + ' m from your pin: ' +
+              KK.house.describe(near.attrs) + '. Is your room in the same house?',
+        okText: 'Yes, same house',
+        cancelText: 'No, a different house'
+      }).then(function(yes) {
+        return yes ? { lat: near.lat, lng: near.lng } : null;
+      });
+    },
+
+    // Cards for a list of rooms, from the list's own card template.
+    cardsHtml: function(list) {
+      var tpl = window.Handlebars && window.Handlebars.templates &&
+                window.Handlebars.templates['place-list-item'];
+      if (!tpl) { return ''; }
+      return list.map(function(a) { return '<div class="kk-house-card">' + tpl(a) + '</div>'; }).join('');
+    },
+
+    // The house sheet: tapped house pin -> its rooms.
+    openSheet: function(list) {
+      KK.house.closeSheet();
+      var s = KK.house.summary(list);
+      var where = (list[0] && (list[0].location || list[0].name)) || '';
+      var rooms = list.slice().sort(function(a, b) { return KK.list.compare('cheapest', a, b); });
+      var $back = $('<div class="kk-house-backdrop"></div>');
+      var $sheet = $('<div class="kk-house-sheet" role="dialog" aria-modal="true" aria-label="Rooms in this house"></div>');
+      $sheet.append(
+        $('<button type="button" class="kk-house-close" aria-label="Close">&times;</button>'),
+        $('<h2 class="kk-house-title"></h2>').text(s.count + ' rooms in this house'),
+        where ? $('<p class="kk-house-where"></p>').text(where) : null,
+        $('<div class="kk-house-list"></div>').html(KK.house.cardsHtml(rooms)));
+      $back.append($sheet).appendTo('body');
+      function close() { KK.house.closeSheet(); }
+      $back.on('click', function(e) { if (e.target === $back[0]) { close(); } });
+      $sheet.on('click', '.kk-house-close', close);
+      // A card is a link to the room; the app routes it, the sheet goes.
+      $sheet.on('click', 'a.kk-card', function(e) {
+        if (window.app && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+          e.preventDefault();
+          close();
+          window.app.navigate('place/' + $(this).data('place-id'), { trigger: true });
+        }
+      });
+      $(document).on('keydown.kkhouse', function(e) { if (e.key === 'Escape') { close(); } });
+      $sheet.find('.kk-house-close').trigger('focus');
+    },
+
+    closeSheet: function() {
+      $(document).off('keydown.kkhouse');
+      $('.kk-house-backdrop').remove();
+    },
+
+    // "Other rooms in this house" on a room's own page.
+    renderOthers: function($host, attrs, list) {
+      if (!$host || !$host.length) { return; }
+      var others = KK.house.siblings(attrs, list);
+      if (!others.length) { $host.prop('hidden', true).empty(); return; }
+      $host.html('<h3 class="kk-house-others-title">' +
+        KK.esc('Other rooms in this house (' + others.length + ')') + '</h3>' +
+        KK.house.cardsHtml(others)).prop('hidden', false);
+    }
+  };
+
+  // ---- Several rooms from one form ----------------------------------------
+  // At a house with several rooms, the poster fills the form for one room
+  // and taps "+ Add another room": that room drops into a list above the
+  // form (with a remove cross) and the form stays filled for the next one,
+  // with only the photos cleared - identical rooms are just new photos and
+  // another tap. Post then saves every room on the same pin, so the map
+  // shows them as one house. The owner's design, like a government form
+  // where you fill a row and keep adding (2026-10-13). The form itself is
+  // unchanged for someone posting one room: they never tap the button.
+  KK.rooms = {
+    // Never part of a room's own details: the promise is made once, at Post.
+    IGNORE: ['private-consent', 'private-consent_version', 'save-place-btn'],
+
+    // The fields that make a room what it is, for comparing two rooms.
+    fields: function(attrs) {
+      var out = {};
+      Object.keys(attrs || {}).sort().forEach(function(k) {
+        if (KK.rooms.IGNORE.indexOf(k) === -1) { out[k] = String(attrs[k] == null ? '' : attrs[k]); }
+      });
+      return out;
+    },
+
+    // Has the form been changed since the last room was added? Untouched,
+    // it is just the last room's details kept for convenience, and Post must
+    // not save it a second time.
+    changed: function(attrs, photoCount, last) {
+      if (photoCount > 0) { return true; }
+      if (!last) { return true; }
+      return JSON.stringify(KK.rooms.fields(attrs)) !== JSON.stringify(KK.rooms.fields(last.attrs));
+    },
+
+    freeText: function(attrs) {
+      var a = KK.availability(attrs.free_ts, null, attrs.free_state);
+      if (a.state === 'now') { return 'Free now'; }
+      if (a.state === 'later') { return 'Free from ' + a.label; }
+      return 'Someone lives here';
+    },
+
+    // "Single room · Own kitchen · Rs 5,000 · Free now · 2 photos"
+    label: function(attrs, photoCount) {
+      var parts = [KK.list.TYPE_LABELS[attrs.location_type] || 'Room'];
+      var kitchen = KK.kitchen.label(attrs.kitchen);
+      if (kitchen) { parts.push(kitchen); }
+      var rent = KK.rent.format(attrs.rent);
+      if (rent) { parts.push(rent); }
+      parts.push(KK.rooms.freeText(attrs));
+      if (photoCount) { parts.push(photoCount === 1 ? '1 photo' : photoCount + ' photos'); }
+      return parts.join(' · ');
+    },
+
+    postLabel: function(n) {
+      return n === 1 ? 'Post 1 room' : 'Post ' + n + ' rooms';
+    },
+
+    MAX_COUNT: 20,
+
+    // How many rooms a list stands for: a row can be "× 3" identical rooms.
+    total: function(rooms) {
+      return (rooms || []).reduce(function(n, r) { return n + (r.count || 1); }, 0);
+    },
+
+    // The list, one saved room per copy, each with its OWN photo copies -
+    // so when one of three identical rooms is taken, the others keep theirs.
+    expand: function(rooms) {
+      var out = [];
+      (rooms || []).forEach(function(r) {
+        for (var i = 0; i < (r.count || 1); i++) {
+          out.push({
+            attrs: r.attrs,
+            photos: r.photos.map(function(p) { return { name: p.name, blob: p.blob, file: p.file }; })
+          });
+        }
+      });
+      return out;
+    },
+
+    // The list above the form. Built with text, not html: every part of a
+    // label is something the poster typed or chose.
+    // Tapping the text brings the room back into the form to edit; the
+    // stepper says how many identical rooms this row is; the cross removes it.
+    listHtml: function(rooms) {
+      return rooms.map(function(r, i) {
+        var n = r.count || 1;
+        return '<li class="kk-room-added">' +
+          '<span class="kk-room-num" aria-hidden="true">' + (i + 1) + '</span>' +
+          '<button type="button" class="kk-room-edit" data-index="' + i + '" ' +
+            'aria-label="Edit room ' + (i + 1) + '">' +
+            '<span class="kk-room-text">' + KK.esc(KK.rooms.label(r.attrs, r.photos.length)) + '</span>' +
+            '<span class="kk-room-edit-hint">Tap to edit</span></button>' +
+          '<span class="kk-room-count" role="group" aria-label="How many rooms like this">' +
+            '<button type="button" class="kk-room-less" data-index="' + i + '" aria-label="One fewer"' +
+              (n <= 1 ? ' disabled' : '') + '>&minus;</button>' +
+            '<span class="kk-room-n">&times; ' + n + '</span>' +
+            '<button type="button" class="kk-room-more" data-index="' + i + '" aria-label="One more"' +
+              (n >= KK.rooms.MAX_COUNT ? ' disabled' : '') + '>+</button>' +
+          '</span>' +
+          '<button type="button" class="kk-room-remove" data-index="' + i + '" ' +
+            'aria-label="Remove room ' + (i + 1) + '">&times;</button></li>';
+      }).join('');
+    }
+  };
+
+  // ---- A house in progress survives a phone call ---------------------------
+  // The rooms added from the form live only in the open page, so a call, a
+  // locked screen, or Android reloading the browser tab to free memory would
+  // lose a whole house. They are kept on the phone in IndexedDB (photos
+  // included - localStorage holds only text and about 5 MB) and offered back
+  // the next time the form opens. Only rooms already added are kept, never
+  // the one being typed. Every call fails quietly: a phone that refuses
+  // storage just does not get drafts.
+  KK.draft = {
+    MAX_AGE_MS: 3 * 24 * 3600 * 1000,
+
+    // Pure: is this draft worth offering?
+    isFresh: function(draft, now) {
+      return !!(draft && draft.rooms && draft.rooms.length && draft.savedAt &&
+                (now || Date.now()) - draft.savedAt < KK.draft.MAX_AGE_MS);
+    },
+
+    // Pure: "3 rooms, Golpark, Butwal - saved 10 minutes ago"
+    describe: function(draft, now) {
+      var n = KK.rooms.total(draft.rooms);
+      var mins = Math.max(0, Math.round(((now || Date.now()) - draft.savedAt) / 60000));
+      var ago = mins < 1 ? 'just now' : mins < 60 ? mins + (mins === 1 ? ' minute' : ' minutes') + ' ago' :
+        Math.round(mins / 60) + (Math.round(mins / 60) === 1 ? ' hour' : ' hours') + ' ago';
+      return n + (n === 1 ? ' room' : ' rooms') + (draft.location ? ', ' + draft.location : '') + ' - saved ' + ago;
+    },
+
+    _open: function() {
+      return new Promise(function(resolve) {
+        try {
+          if (!window.indexedDB) { resolve(null); return; }
+          var req = window.indexedDB.open('kothakhoj', 1);
+          req.onupgradeneeded = function() { req.result.createObjectStore('drafts'); };
+          req.onsuccess = function() { resolve(req.result); };
+          req.onerror = function() { resolve(null); };
+        } catch (e) { resolve(null); }
+      });
+    },
+
+    _run: function(mode, fn) {
+      return KK.draft._open().then(function(db) {
+        if (!db) { return null; }
+        return new Promise(function(resolve) {
+          try {
+            var tx = db.transaction('drafts', mode), result = null;
+            var req = fn(tx.objectStore('drafts'));
+            if (req) { req.onsuccess = function() { result = req.result; }; }
+            tx.oncomplete = function() { resolve(result); };
+            tx.onerror = tx.onabort = function() { resolve(null); };
+          } catch (e) { resolve(null); }
+        });
+      });
+    },
+
+    save: function(draft) {
+      return KK.draft._run('readwrite', function(store) { return store.put(draft, 'house'); });
+    },
+    load: function() {
+      return KK.draft._run('readonly', function(store) { return store.get('house'); });
+    },
+    clear: function() {
+      return KK.draft._run('readwrite', function(store) { return store.delete('house'); });
+    }
+  };
+
+  // "Add another room in this house", on the screen right after posting.
+  // Opens a fresh form on the SAME pin, with the owner's phone filled in;
+  // the poster only adds what differs - type, kitchen, rent, photos.
+  $(document).on('click', '.kk-posted-house', function(e) {
+    e.preventDefault();
+    var d = $(this).data(), app = window.app;
+    var lat = Number(d.lat), lng = Number(d.lng);
+    if (!app || !isFinite(lat) || !isFinite(lng)) { return; }
+    app.navigate('place/new', { trigger: true });
+    var av = app.appView, form = av && av.placeFormView;
+    if (!form) { return; }
+    var ll = window.L.latLng(lat, lng);
+    form.kkHouse = { lat: lat, lng: lng };
+    if (av.mapView && av.mapView.map) {
+      av.mapView.map.setView(ll, av.mapView.map.getMaxZoom() || 18);
+    }
+    av.setPlaceFormViewLatLng(ll);
+    if (d.location) { av.setPlaceFormViewLocation(String(d.location)); }
+    // The owner's phone comes from the room just saved, not from the page.
+    var first = app.collection && app.collection.get(d.placeId);
+    var phone = first && first.get('contact_number'), role = first && first.get('contact_role');
+    if (phone) { form.$('input[name="contact_number"]').val(String(phone)); }
+    if (role) { form.$('input[name="contact_role"][value="' + String(role).replace(/"/g, '') + '"]').prop('checked', true); }
+  });
+
   // ---- Availability badge -------------------------------------------------
   // Pure decision used by the detail page badge (and tests).
   //
@@ -882,6 +1406,10 @@
 
     if (name === 'location_type' && validity.valueMissing) {
       return 'Choose the room type - single room, double room or flat.';
+    }
+
+    if (name === 'kitchen' && validity.valueMissing) {
+      return 'Choose the kitchen - own kitchen, shared kitchen or no kitchen.';
     }
 
     // The consent line above Save (place-form.html). The line itself is
@@ -1220,6 +1748,28 @@
     window.Handlebars.registerHelper('report_block', function(id, name) {
       var n = typeof name === 'string' ? name : '';
       return new window.Handlebars.SafeString(KK.report.blockHtml(id, n));
+    });
+    // The rent on a list card: the number, or say plainly it was not given.
+    window.Handlebars.registerHelper('card_rent', function(rent) {
+      var v = (typeof rent === 'string' || typeof rent === 'number') ? rent : null;
+      var text = KK.rent.format(v);
+      return new window.Handlebars.SafeString(text ?
+        '<span class="kk-card-rent-amount">' + KK.esc(text) + '</span> <span class="kk-card-rent-period">/ month</span>' :
+        '<span class="kk-card-rent-none">Rent not given</span>');
+    });
+    // Only for a room that really is off the map (visible === false), which
+    // only its poster is ever served. Missing means visible.
+    window.Handlebars.registerHelper('card_hidden', function(visible) {
+      if (visible !== false) { return ''; }
+      return new window.Handlebars.SafeString('<span class="kk-card-hidden">Only you can see this</span>');
+    });
+    // A second chip beside the room type. Nothing at all for rooms posted
+    // before the question existed - an empty chip would read as a fault.
+    window.Handlebars.registerHelper('kitchen_chip', function(kitchen) {
+      var text = KK.kitchen.label(typeof kitchen === 'string' ? kitchen : '');
+      if (!text) { return ''; }
+      return new window.Handlebars.SafeString(
+        '<span class="place-type-chip kk-kitchen-chip">' + KK.esc(text) + '</span>');
     });
   }
 
@@ -2149,6 +2699,10 @@
 
       fetchSheet.done(function(text) {
         var colleges = KK.colleges.parseCsv(text);
+        // Kept for the room list's "Nearest to" sort, which may already be
+        // open and waiting for it.
+        KK.colleges.list = colleges;
+        $(document).trigger('kk:colleges', [colleges]);
         if (colleges.length) { addCollegeLayer(map, colleges); }
       })
       .fail(function() {
@@ -2361,6 +2915,39 @@
     writeFree($picker, result);
     writeHideUntilFree($picker, kind, result.label);
   }
+
+  // Read and set the picker's answer as a whole, so a room added with
+  // "+ Add another room" can be brought back into the form exactly as it was
+  // chosen (week, month, or "hide until free"), not just its stored date.
+  KK.freePicker = {
+    snapshot: function($picker) {
+      if (!$picker || !$picker.length) { return null; }
+      var $week = $picker.find('.free-week.is-active'),
+          $month = $picker.find('.free-month.is-active');
+      return {
+        kind: $picker.find('.free-kind.is-active').data('kind') || 'ask',
+        week: $week.length ? Number($week.data('weeks')) : null,
+        month: $month.length ? Number($month.data('i')) : null,
+        hide: !!$picker.find('.free-hide-check').prop('checked')
+      };
+    },
+    restore: function($picker, snap) {
+      if (!$picker || !$picker.length || !snap) { return; }
+      $picker.find('.free-kind, .free-week, .free-month').removeClass('is-active');
+      if (snap.kind && snap.kind !== 'ask') {
+        $picker.find('.free-kind[data-kind="' + snap.kind + '"]').addClass('is-active');
+      }
+      if (snap.kind === 'weeks' && snap.week) {
+        $picker.find('.free-week[data-weeks="' + snap.week + '"]').addClass('is-active');
+      }
+      if (snap.kind === 'date' && snap.month != null) {
+        renderMonthChips($picker);
+        $picker.find('.free-month[data-i="' + snap.month + '"]').addClass('is-active');
+      }
+      $picker.find('.free-hide-check').prop('checked', !!snap.hide);
+      refreshFreePicker($picker);
+    }
+  };
 
   // ---- Claim button -------------------------------------------------------
   // Delegated, because the detail panel is re-rendered by Marionette on every

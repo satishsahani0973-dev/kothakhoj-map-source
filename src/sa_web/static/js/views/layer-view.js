@@ -95,6 +95,9 @@ var Shareabouts = Shareabouts || {};
 
         // Focus on the layer onclick
         if (this.layer) {
+          // The cluster group only sees markers. A house pin needs to know
+          // which rooms are inside it (map-view.js makeClusterGroup).
+          this.layer.placeModel = this.model;
           this.layer.on('click', this.onMarkerClick, this);
 
           // Label the user's own places with a small "Yours" tag.

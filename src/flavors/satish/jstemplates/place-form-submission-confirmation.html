@@ -25,5 +25,15 @@
      data-place-name="{{#if name }}{{ name }}{{^}}Room for rent{{/if}}"
      href="#">{{#_}}Send the link to someone{{/_}}</a>
 
+  {{!-- A house usually has more than one room. This opens a fresh form on
+        the SAME pin with the owner's phone filled in, so the rooms show on
+        the map as one house and the poster types only what differs. The
+        phone is read from the saved room when the button is tapped (custom.js,
+        .kk-posted-house), never written into this page. --}}
+  <a class="btn btn-block kk-posted-house" href="#"
+     data-place-id="{{ id }}"
+     data-lat="{{ geometry.coordinates.[1] }}" data-lng="{{ geometry.coordinates.[0] }}"
+     data-location="{{ location }}">{{#_}}+ Add another room in this house{{/_}}</a>
+
   <p class="kk-posted-note">{{#_}}Wrong details? Open the room and tap Report, or add it again.{{/_}}</p>
 </div>

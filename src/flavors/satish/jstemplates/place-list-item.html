@@ -1,0 +1,25 @@
+{{!-- One room as a short card: photo, rent, type and kitchen, when it is
+      free, and where. The whole card is one link to the room's own page,
+      which has everything else (all photos, contact, directions, report)
+      and centres the map on the room.
+
+      Used by the room list (PlaceListItemView), the house sheet that a
+      house pin opens, and "Other rooms in this house" - so all three look
+      and behave the same. Until 2026-10-13 the list reused the whole room
+      page for every row, and one room filled a phone screen.
+
+      The distance line is filled in by the list when it is sorted by
+      nearest college; it is empty otherwise and takes no space. --}}
+<a class="kk-card" href="/place/{{ id }}" rel="internal" data-place-id="{{ id }}">
+  <span class="kk-card-photo">
+    {{#if attachments.length}}{{#with attachments.[0]}}<img src="{{#if thumbnail}}{{ thumbnail }}{{else}}{{ file }}{{/if}}" alt="" loading="lazy" decoding="async">{{/with}}{{else}}<span class="kk-card-nophoto" aria-hidden="true"></span>{{/if}}
+  </span>
+  <span class="kk-card-body">
+    <span class="kk-card-rent">{{ card_rent rent }}</span>
+    <span class="kk-card-chips"><span class="place-type-chip">{{ place_type_label location_type }}</span> {{ kitchen_chip kitchen }}</span>
+    <span class="kk-card-free">{{ free_badge free_ts free_state }}</span>
+    <span class="kk-card-where">{{#if location}}{{ location }}{{else}}{{ name }}{{/if}}</span>
+    <span class="kk-card-distance"></span>
+    {{ card_hidden visible }}
+  </span>
+</a>

@@ -1102,7 +1102,22 @@ var Shareabouts = Shareabouts || {};
           close = cfg.close_radius || 12,
           closeFrom = cfg.close_from_zoom || 16;
 
-      return L.markerClusterGroup({
+      // A cluster whose rooms all share one pin is one HOUSE (the flavor's
+      // KK.house decides). It is drawn as a labelled house pin and opens a
+      // list of its rooms when tapped, instead of a numbered circle that
+      // fans out into small pins. Without the flavor helpers, or for rooms
+      // merely near each other, clusters behave exactly as before.
+      function houseOf(cluster) {
+        var KK = window.KothaKhoj;
+        if (!KK || !KK.house) { return null; }
+        var rooms = cluster.getAllChildMarkers().map(function(m) {
+          return m.placeModel ? m.placeModel.attributes : null;
+        });
+        if (rooms.indexOf(null) !== -1 || !KK.house.isOneHouse(rooms)) { return null; }
+        return { KK: KK, rooms: rooms };
+      }
+
+      var group = L.markerClusterGroup({
         maxClusterRadius: function(zoom) { return zoom >= closeFrom ? close : wide; },
         showCoverageOnHover: false,
         spiderfyOnMaxZoom: true,
@@ -1110,6 +1125,18 @@ var Shareabouts = Shareabouts || {};
         // do not overlap each other.
         spiderfyDistanceMultiplier: cfg.spread || 2,
         iconCreateFunction: function(cluster) {
+          var house = houseOf(cluster);
+          if (house) {
+            var s = house.KK.house.summary(house.rooms),
+                zoom = group._map ? group._map.getZoom() : closeFrom,
+                icon = house.KK.house.icon(s.state, zoom);
+            return L.divIcon({
+              html: house.KK.house.pinHtml(s, zoom),
+              className: 'kk-house-pin',
+              iconSize: L.point(icon.size[0], icon.size[1]),
+              iconAnchor: L.point(icon.anchor[0], icon.anchor[1])
+            });
+          }
           var n = cluster.getChildCount(),
               size = n < 10 ? 40 : (n < 100 ? 46 : 54);
           return L.divIcon({
@@ -1119,6 +1146,21 @@ var Shareabouts = Shareabouts || {};
           });
         }
       });
+
+      // The plugin answers a cluster tap with its own _zoomOrSpiderfy,
+      // bound when the group is added to the map - so replacing it here,
+      // before that, is the one place a house tap can be caught. (Leaflet.
+      // markercluster 1.5.3, vendored; check this name if it is upgraded.)
+      var zoomOrSpiderfy = group._zoomOrSpiderfy;
+      group._zoomOrSpiderfy = function(e) {
+        var house = houseOf(e.layer);
+        if (house) {
+          house.KK.house.openSheet(house.rooms);
+          return;
+        }
+        return zoomOrSpiderfy.call(this, e);
+      };
+      return group;
     },
     zoomInOn: function(latLng) {
       this.map.setView(latLng, this.options.mapConfig.options.maxZoom || 17);

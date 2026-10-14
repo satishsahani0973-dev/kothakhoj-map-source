@@ -133,6 +133,17 @@ var Shareabouts = Shareabouts || {};
         });
       }());
 
+      // "Other rooms in this house": the rooms saved on this room's exact
+      // pin, drawn as the same cards the list uses (KK.house in custom.js).
+      (function () {
+        var house = window.KothaKhoj && window.KothaKhoj.house;
+        var places = self.model.collection;
+        if (!house || !places) { return; }
+        house.renderOthers(self.$el.find('.kk-house-others'), self.model.attributes,
+          places.filter(function(m) { return !m.isNew(); })
+                .map(function(m) { return m.attributes; }));
+      }());
+
     // Show the delete button when the server will accept the delete. A
     // signed-in poster owns their place by ACCOUNT, so match on the current
     // user's username against the place's submitter — this follows their

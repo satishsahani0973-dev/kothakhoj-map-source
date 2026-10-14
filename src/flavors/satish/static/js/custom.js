@@ -1663,32 +1663,44 @@
   // ---- Several rooms from one form ----------------------------------------
   // At a house with several rooms, the poster fills the form for one room
   // and taps "+ Add another room": that room drops into a list above the
-  // form (with a remove cross) and the form stays filled for the next one,
-  // with only the photos cleared - identical rooms are just new photos and
-  // another tap. Post then saves every room on the same pin, so the map
-  // shows them as one house. The owner's design, like a government form
-  // where you fill a row and keep adding (2026-10-13). The form itself is
-  // unchanged for someone posting one room: they never tap the button.
+  // form (with a remove cross) and the form clears for the next one. Only
+  // the room's own answers clear; the pin, the owner's phone and the promise
+  // belong to the whole house and stay (the owner asked for a clean form on
+  // 2026-10-14; it used to keep every field). Identical rooms need no
+  // retyping: that is the x N count on a row. Post then saves every room on
+  // the same pin, so the map shows them as one house. The owner's design,
+  // like a government form where you fill a row and keep adding
+  // (2026-10-13). The form itself is unchanged for someone posting one
+  // room: they never tap the button.
   KK.rooms = {
-    // Never part of a room's own details: the promise is made once, at Post.
-    IGNORE: ['private-consent', 'private-consent_version', 'save-place-btn'],
+    // A room's own answers: cleared by "+ Add another room". Everything
+    // else in the form belongs to the house. The free-date answer is a room's
+    // too, but it is reset through its picker (KK.freePicker.clear), which
+    // writes these hidden fields.
+    ROOM_FIELDS: ['location_type', 'kitchen', 'rent', 'description'],
+    FREE_FIELDS: ['free_state', 'free_from', 'free_ts', 'hide_until_free'],
 
-    // The fields that make a room what it is, for comparing two rooms.
-    fields: function(attrs) {
-      var out = {};
-      Object.keys(attrs || {}).sort().forEach(function(k) {
-        if (KK.rooms.IGNORE.indexOf(k) === -1) { out[k] = String(attrs[k] == null ? '' : attrs[k]); }
+    // Nothing typed for a room since the form was cleared: no answer, no
+    // photo, and the free date still unanswered. With rooms already in the
+    // list, a blank form means "that is all of them", so Post asks nothing.
+    isBlank: function(attrs, photoCount) {
+      attrs = attrs || {};
+      if (photoCount > 0) { return false; }
+      var typed = KK.rooms.ROOM_FIELDS.some(function(k) {
+        return String(attrs[k] == null ? '' : attrs[k]).trim() !== '';
       });
-      return out;
+      if (typed) { return false; }
+      return (!attrs.free_state || attrs.free_state === 'ask') && !attrs.hide_until_free;
     },
 
-    // Has the form been changed since the last room was added? Untouched,
-    // it is just the last room's details kept for convenience, and Post must
-    // not save it a second time.
-    changed: function(attrs, photoCount, last) {
-      if (photoCount > 0) { return true; }
-      if (!last) { return true; }
-      return JSON.stringify(KK.rooms.fields(attrs)) !== JSON.stringify(KK.rooms.fields(last.attrs));
+    // The house's part of a saved room (phone, role, ...), to fill a fresh
+    // form when a saved house is opened again.
+    houseFields: function(attrs) {
+      var out = {}, drop = KK.rooms.ROOM_FIELDS.concat(KK.rooms.FREE_FIELDS);
+      Object.keys(attrs || {}).forEach(function(k) {
+        if (drop.indexOf(k) === -1) { out[k] = attrs[k]; }
+      });
+      return out;
     },
 
     freeText: function(attrs) {
@@ -3463,6 +3475,10 @@
       }
       $picker.find('.free-hide-check').prop('checked', !!snap.hide);
       refreshFreePicker($picker);
+    },
+    // Back to unanswered, as on a fresh form (stored as "ask").
+    clear: function($picker) {
+      KK.freePicker.restore($picker, { kind: 'ask', week: null, month: null, hide: false });
     }
   };
 

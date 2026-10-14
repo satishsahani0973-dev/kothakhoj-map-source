@@ -285,7 +285,8 @@ var Shareabouts = Shareabouts || {};
     // ---- several rooms from one form ------------------------------------
     //
     // "+ Add another room" puts this room into the list above the form and
-    // keeps every field for the next one, clearing only the photos. A row can
+    // clears the room's own answers for the next one, keeping the house's
+    // (the pin, the owner's phone, the promise). A row can
     // stand for several identical rooms (the x N stepper), tapping a row
     // brings it back into the form to edit, and the list is kept on the phone
     // so a call or a reloaded tab does not lose it. Post then saves each room
@@ -334,6 +335,26 @@ var Shareabouts = Shareabouts || {};
       this.renderPhotoStatus();
     },
 
+    // A fresh form for the next room: its type, kitchen, rent, details,
+    // free date and photos go (KK.rooms.ROOM_FIELDS); the house's answers
+    // stay. Required radio groups get their `required` back.
+    clearRoom: function() {
+      var KK = window.KothaKhoj, form = this.$('form')[0];
+      if (!form || !KK || !KK.rooms) { return; }
+      _.each(KK.rooms.ROOM_FIELDS, function(name) {
+        _.each(form.querySelectorAll('[name="' + name + '"]'), function(el) {
+          if (el.type === 'radio' || el.type === 'checkbox') { el.checked = false; }
+          else { el.value = ''; }
+        });
+      });
+      this.updatedRequiredOptionButtons();
+      if (KK.freePicker) { KK.freePicker.clear(this.$('.free-picker')); }
+      this.clearAllPhotos();
+      // Gatekeeper marks a tried form so empty fields show red; a fresh room
+      // should not start out looking wrong.
+      $(form).removeClass('form-submitted');
+    },
+
     // The browser's own checks, for this room only - the consent line is a
     // promise made once, at Post, so it is not asked for here.
     roomIsComplete: function() {
@@ -360,10 +381,6 @@ var Shareabouts = Shareabouts || {};
       }
       if (!this.roomIsComplete()) { return; }
       var room = this.snapshotRoom();
-      // What the form holds right after this tap: compared against at Post,
-      // so an untouched form is never mistaken for one more room. Not "the
-      // last row in the list" - an edited room goes back to its old place.
-      this._lastAdded = room;
       // A room brought back to edit goes back where it was, with its count.
       if (this._editing) {
         room.count = this._editing.count || 1;
@@ -375,10 +392,14 @@ var Shareabouts = Shareabouts || {};
       // Every photo goes with the room just added - all of them, not only
       // those under the last picker's name (onClearPhotos clears by name, and
       // knows no name until a picker has been used). The next room starts
-      // with none.
-      this.clearAllPhotos();
+      // with none, and with none of this room's answers.
+      this.clearRoom();
       this.renderRooms();
       this.saveDraft();
+      // The tap was at the bottom of the form; show the list and the fresh
+      // form's top, so the cleared fields do not look like lost work.
+      var top = this.$('.kk-rooms-added')[0];
+      if (top && top.scrollIntoView) { top.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
       KK.toast('Room added. Fill in the next one, or Post.');
     },
 
@@ -411,7 +432,6 @@ var Shareabouts = Shareabouts || {};
           room = this.kkRooms[i];
       if (!room || !KK) { return; }
       var box = this.snapshotRoom(),
-          last = this._lastAdded,
           go = function() {
             self.kkRooms.splice(i, 1);
             self._editing = { index: i, count: room.count || 1 };
@@ -422,7 +442,7 @@ var Shareabouts = Shareabouts || {};
             if (top && top.scrollIntoView) { top.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
             KK.toast('Change it, then tap "+ Add another room" to put it back.');
           };
-      if (this._editing || KK.rooms.changed(box.attrs, box.photos.length, last)) {
+      if (this._editing || !KK.rooms.isBlank(box.attrs, box.photos.length)) {
         KK.confirm({
           title: 'Edit room ' + (i + 1) + '?',
           body: 'What is in the form now will be replaced. Add it first if it is a room you want.',
@@ -444,6 +464,12 @@ var Shareabouts = Shareabouts || {};
       this.$('.kk-rooms-count').text(total);
       this.$('.kk-rooms-list').html(KK.rooms.listHtml(this.kkRooms));
       $button.val(n ? KK.rooms.postLabel(total) : this._submitLabelDefault);
+      // With rooms in the list, an empty form is "that is all of them": the
+      // browser must not refuse Post over its empty required fields.
+      // onSubmit checks the promise itself, and submitRoom asks about a
+      // half-filled room.
+      var form = this.$('form')[0];
+      if (form) { form.noValidate = n > 0; }
     },
 
     // ---- the house in progress, kept on the phone ----------------------
@@ -477,7 +503,6 @@ var Shareabouts = Shareabouts || {};
           cancelText: 'Start a new one'
         }).then(function(yes) {
           if (!yes) { KK.draft.clear(); return; }
-          self._lastAdded = null;
           self.kkRooms = draft.rooms.map(function(r) {
             return { attrs: r.attrs, picker: r.picker, count: r.count || 1,
                      photos: r.photos.map(function(p) { return { name: p.name, blob: p.blob, file: '' }; }) };
@@ -491,13 +516,12 @@ var Shareabouts = Shareabouts || {};
             av.setPlaceFormViewLatLng(ll);
             if (draft.location) { av.setPlaceFormViewLocation(draft.location); }
           }
-          // Leave the form as "+ Add another room" would have: holding the
-          // last room's details, photos cleared. An empty form would block
-          // Post on its own required fields, and an untouched one is not
-          // asked about.
+          // Leave the form as "+ Add another room" would have: the house's
+          // answers (the owner's phone, ...) from the last room, and a blank
+          // room. With rooms in the list, a blank form does not block Post.
           var last = self.kkRooms[self.kkRooms.length - 1];
-          self.loadRoom({ attrs: last.attrs, picker: last.picker, photos: [] });
-          self._lastAdded = self.snapshotRoom();
+          self.loadRoom({ attrs: KK.rooms.houseFields(last.attrs), picker: null, photos: [] });
+          self.clearRoom();
           self.renderRooms();
         });
       });
@@ -695,7 +719,23 @@ var Shareabouts = Shareabouts || {};
         spinner.stop();
       }
     },
-    onSubmit: Gatekeeper.onValidSubmit(function(evt) {
+    // With rooms in the list the form's own room may be left blank, so its
+    // required fields are not checked here (renderRooms also turns the
+    // browser's check off). The promise still is: it covers every room.
+    onSubmit: function(evt) {
+      if (!(this.kkRooms && this.kkRooms.length)) { return this.onSubmitOne(evt); }
+      if (evt) { evt.preventDefault(); }
+      var consent = this.$('[name="private-consent"]')[0];
+      if (consent && !consent.checkValidity()) {
+        if (consent.reportValidity) { consent.reportValidity(); }
+        return;
+      }
+      this.proceedSubmit(evt);
+    },
+    onSubmitOne: Gatekeeper.onValidSubmit(function(evt) {
+      this.proceedSubmit(evt);
+    }),
+    proceedSubmit: function(evt) {
       // Make sure that the center point has been set after the form was
       // rendered. If not, this is a good indication that the user neglected
       // to move the map to set it in the correct location.
@@ -724,7 +764,7 @@ var Shareabouts = Shareabouts || {};
       }
 
       this.submitRoom();
-    }),
+    },
 
     submitRoom: function() {
       // Same house? Asked once per form, before anything is saved: a room
@@ -750,16 +790,15 @@ var Shareabouts = Shareabouts || {};
       }
 
       // Several rooms: decide once whether the form's current contents are
-      // one more room, then save them all. Untouched since the last "Add",
-      // the form is just that room's details kept for convenience; changed,
-      // the poster is asked, so nothing is saved twice or silently dropped.
+      // one more room, then save them all. Blank since the last "Add", the
+      // form is just the end of the list; anything typed, the poster is
+      // asked, so nothing is silently dropped.
       if ((this.kkRooms && this.kkRooms.length) || this._roomsPlan) {
         if (!this._roomsPlan) {
           if (!this._boxDecided) {
             var box = this.snapshotRoom(),
-                last = this._lastAdded,
                 n = KK.rooms.total(this.kkRooms);
-            if (KK && KK.rooms && KK.rooms.changed(box.attrs, box.photos.length, last)) {
+            if (KK && KK.rooms && !KK.rooms.isBlank(box.attrs, box.photos.length)) {
               if (this._boxAsking) { return; }
               this._boxAsking = true;
               KK.confirm({
@@ -768,9 +807,12 @@ var Shareabouts = Shareabouts || {};
                 okText: 'Yes, add it',
                 cancelText: n === 1 ? 'No, only the 1 added' : 'No, only the ' + n + ' added'
               }).then(function(yes) {
+                self._boxAsking = false;
+                // Half filled: the browser points at what is missing, and
+                // nothing is saved until Post is pressed again.
+                if (yes && !self.roomIsComplete()) { return; }
                 self._boxIncluded = yes;
                 self._boxDecided = true;
-                self._boxAsking = false;
                 self.submitRoom();
               });
               return;

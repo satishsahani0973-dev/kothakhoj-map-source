@@ -32,7 +32,7 @@
           <div class="kk-rooms-added" hidden>
             <p class="kk-rooms-added-title">{{#_}}Rooms added{{/_}} (<span class="kk-rooms-count">0</span>)</p>
             <ol class="kk-rooms-list"></ol>
-            <p class="kk-rooms-next">{{#_}}Next room - change what is different:{{/_}}</p>
+            <p class="kk-rooms-next">{{#_}}Next room:{{/_}}</p>
           </div>
 
           {{!-- This question sits ABOVE the field set on purpose. It used to
@@ -106,8 +106,8 @@
           {{> form-field-set form_config=place_config }}
 
           {{!-- A house with several rooms: this room goes into the list
-                above, and the form stays filled for the next one (only the
-                photos clear). Post then saves them all on this pin. --}}
+                above, and the form clears for the next one (the pin and the
+                owner's phone stay). Post then saves them all on this pin. --}}
           <button type="button" class="btn btn-block kk-add-room">{{#_}}+ Add another room in this house{{/_}}</button>
 
           {{!-- One promise before a room goes up (2026-10-12): the poster is
